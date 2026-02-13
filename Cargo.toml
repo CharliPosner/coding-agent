@@ -31,3 +31,6 @@ thiserror = "2.0"
 
 # Token counting
 tiktoken-rs = "0.9"
+
+# File system utilities
+glob = "0.3"

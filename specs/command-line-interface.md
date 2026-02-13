@@ -967,7 +967,7 @@ src/
 **Goal:** Safe by default—ask before writing to untrusted locations.
 
 **Deliverables:**
-- [ ] Trusted paths configuration
+- [x] Trusted paths configuration
 - [ ] Path matching logic (supports `~`, globs)
 - [ ] Permission check before file write/modify
 - [ ] Permission prompt UI (Y/n/always/never)

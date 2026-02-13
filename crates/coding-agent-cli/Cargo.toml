@@ -25,6 +25,7 @@ indicatif = { workspace = true }
 console = { workspace = true }
 syntect = { workspace = true }
 tiktoken-rs = { workspace = true }
+glob = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.10"

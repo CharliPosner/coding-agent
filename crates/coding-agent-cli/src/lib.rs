@@ -6,11 +6,13 @@
 pub mod cli;
 pub mod config;
 pub mod integrations;
+pub mod permissions;
 pub mod tokens;
 pub mod ui;
 
 pub use cli::{InputHandler, Repl, ReplConfig, Terminal};
 pub use config::{Config, PersistenceConfig};
 pub use integrations::{Session, SessionManager, SpecStoryError};
+pub use permissions::{TrustedPaths, TrustedPathsError};
 pub use tokens::{ModelPricing, TokenCount, TokenCounter, TokenCounterError};
 pub use ui::ContextBar;
