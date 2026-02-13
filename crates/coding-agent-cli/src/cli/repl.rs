@@ -7,7 +7,7 @@ use super::input::{InputHandler, InputResult};
 use super::terminal::Terminal;
 use crate::config::Config;
 use crate::integrations::{Session, SessionManager};
-use crate::tokens::TokenCounter;
+use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::ui::ContextBar;
 use std::io::Write;
 use std::path::PathBuf;
@@ -62,6 +62,8 @@ pub struct Repl {
     token_counter: TokenCounter,
     /// Context bar for displaying token usage
     context_bar: ContextBar,
+    /// Cost tracker for detailed token and cost tracking
+    cost_tracker: CostTracker,
 }
 
 impl Repl {
@@ -85,6 +87,9 @@ impl Repl {
         let token_counter = TokenCounter::default();
         let context_bar = ContextBar::new(config.context_window);
 
+        // Initialize cost tracker with default model pricing
+        let cost_tracker = CostTracker::new(ModelPricing::default_pricing());
+
         Self {
             config,
             registry: CommandRegistry::with_defaults(),
@@ -93,6 +98,7 @@ impl Repl {
             session_manager,
             token_counter,
             context_bar,
+            cost_tracker,
         }
     }
 
@@ -155,10 +161,18 @@ impl Repl {
         &mut self.context_bar
     }
 
-    /// Update context bar with tokens from a message
+    /// Update context bar and cost tracker with tokens from a message
     fn update_context_tokens(&mut self, role: &str, content: &str) {
         let token_count = self.token_counter.count_message(role, content);
         self.context_bar.add_tokens(token_count.tokens as u64);
+
+        // Also update the cost tracker with separate input/output tracking
+        if role == "user" {
+            self.cost_tracker.add_input_tokens(token_count.tokens as u64);
+        } else {
+            self.cost_tracker.add_output_tokens(token_count.tokens as u64);
+        }
+        self.cost_tracker.add_message();
     }
 
     /// Display the context bar if enabled
@@ -171,6 +185,7 @@ impl Repl {
     /// Reset context tracking (for /clear)
     pub fn reset_context(&mut self) {
         self.context_bar.reset();
+        self.cost_tracker.reset();
     }
 
     /// Run the REPL loop
@@ -290,6 +305,7 @@ impl Repl {
     fn execute_command(&self, name: &str, args: &[&str]) -> ReplAction {
         let mut ctx = CommandContext {
             registry: self.registry.clone(),
+            cost_tracker: self.cost_tracker.clone(),
         };
 
         match self.registry.get(name) {
@@ -305,6 +321,11 @@ impl Repl {
                 name
             )),
         }
+    }
+
+    /// Get a reference to the cost tracker
+    pub fn cost_tracker(&self) -> &CostTracker {
+        &self.cost_tracker
     }
 }
 

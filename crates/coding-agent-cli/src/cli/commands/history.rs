@@ -83,6 +83,7 @@ mod tests {
     use super::*;
     use crate::cli::commands::CommandRegistry;
     use crate::integrations::Session;
+    use crate::tokens::CostTracker;
     use tempfile::TempDir;
 
     #[test]
@@ -129,7 +130,10 @@ mod tests {
 
         let cmd = HistoryCommand;
         let registry = CommandRegistry::with_defaults();
-        let mut ctx = CommandContext { registry };
+        let mut ctx = CommandContext {
+            registry,
+            cost_tracker: CostTracker::with_default_model(),
+        };
 
         let result = cmd.execute(&[], &mut ctx);
 
@@ -160,7 +164,10 @@ mod tests {
 
         let cmd = HistoryCommand;
         let registry = CommandRegistry::with_defaults();
-        let mut ctx = CommandContext { registry };
+        let mut ctx = CommandContext {
+            registry,
+            cost_tracker: CostTracker::with_default_model(),
+        };
 
         let result = cmd.execute(&[], &mut ctx);
 

@@ -5,10 +5,12 @@
 
 mod clear;
 pub mod config;
+mod cost;
 mod exit;
 mod help;
 mod history;
 
+use crate::tokens::CostTracker;
 use std::collections::HashMap;
 
 /// Result of executing a command
@@ -47,6 +49,8 @@ pub trait Command: Send + Sync {
 pub struct CommandContext {
     /// Reference to the command registry for introspection
     pub registry: CommandRegistry,
+    /// Cost tracker for token usage and cost calculations
+    pub cost_tracker: CostTracker,
 }
 
 /// Registry of available commands
@@ -69,6 +73,7 @@ impl CommandRegistry {
         registry.register(&help::HelpCommand);
         registry.register(&clear::ClearCommand);
         registry.register(&config::ConfigCommand);
+        registry.register(&cost::CostCommand);
         registry.register(&exit::ExitCommand);
         registry.register(&history::HistoryCommand);
         registry
@@ -167,6 +172,9 @@ mod tests {
 
         // Clear command exists
         assert!(registry.get("clear").is_some());
+
+        // Cost command exists
+        assert!(registry.get("cost").is_some());
 
         // Exit command exists
         assert!(registry.get("exit").is_some());

@@ -907,7 +907,7 @@ src/
 - [x] Context bar component (bottom of screen)
 - [x] Color-coded usage (green/yellow/red)
 - [x] Real-time updates after each message
-- [ ] `/cost` command with detailed breakdown
+- [x] `/cost` command with detailed breakdown
 - [ ] `/context` command showing loaded files, working dir
 - [ ] Cost calculation based on model pricing
 

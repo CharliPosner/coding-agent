@@ -33,6 +33,7 @@ impl Command for HelpCommand {
 mod tests {
     use super::*;
     use crate::cli::commands::CommandRegistry;
+    use crate::tokens::CostTracker;
 
     #[test]
     fn test_help_command_name() {
@@ -52,6 +53,7 @@ mod tests {
         let registry = CommandRegistry::with_defaults();
         let mut ctx = CommandContext {
             registry: registry.clone(),
+            cost_tracker: CostTracker::with_default_model(),
         };
 
         let result = cmd.execute(&[], &mut ctx);

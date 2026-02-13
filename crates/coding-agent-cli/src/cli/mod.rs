@@ -87,6 +87,7 @@ pub async fn run_with_startup(verbose: bool, show_startup: bool) -> Result<(), S
             let config_cmd = commands::config::ConfigCommand;
             let mut ctx = commands::CommandContext {
                 registry: commands::CommandRegistry::with_defaults(),
+                cost_tracker: crate::tokens::CostTracker::with_default_model(),
             };
             match config_cmd.execute(&[], &mut ctx) {
                 commands::CommandResult::Output(msg) => println!("{}", msg),

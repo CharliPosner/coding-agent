@@ -22,6 +22,7 @@ impl Command for ClearCommand {
 mod tests {
     use super::*;
     use crate::cli::commands::CommandRegistry;
+    use crate::tokens::CostTracker;
 
     #[test]
     fn test_clear_command_name() {
@@ -34,6 +35,7 @@ mod tests {
         let cmd = ClearCommand;
         let mut ctx = CommandContext {
             registry: CommandRegistry::with_defaults(),
+            cost_tracker: CostTracker::with_default_model(),
         };
 
         let result = cmd.execute(&[], &mut ctx);
