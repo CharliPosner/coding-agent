@@ -12,7 +12,8 @@ use crate::integrations::{Session, SessionManager};
 use crate::permissions::{PermissionChecker, TrustedPaths};
 use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::tools::{
-    create_tool_definitions, execute_tool_with_permissions, tool_definitions_to_api,
+    create_tool_definitions, execute_tool_with_permissions, tool_definitions_to_api, ToolExecutor,
+    ToolExecutorConfig,
 };
 use crate::ui::{ContextBar, FunFactClient, ThinkingMessages, ToolResultFormatter};
 use coding_agent_core::{
@@ -100,6 +101,8 @@ pub struct Repl {
     fun_fact_delay: u32,
     /// Agent manager for spawning and tracking autonomous agents
     agent_manager: Arc<AgentManager>,
+    /// Tool executor for executing tools with error handling and retry logic
+    tool_executor: ToolExecutor,
 }
 
 impl Repl {
@@ -168,6 +171,28 @@ impl Repl {
         // Initialize agent manager
         let agent_manager = Arc::new(AgentManager::new());
 
+        // Initialize tool executor with default configuration
+        let tool_executor_config = app_config
+            .and_then(|cfg| {
+                if cfg.error_recovery.auto_fix {
+                    Some(ToolExecutorConfig {
+                        max_retries: cfg.error_recovery.max_retry_attempts,
+                        auto_fix_enabled: cfg.error_recovery.auto_fix,
+                        ..Default::default()
+                    })
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default();
+
+        let mut tool_executor = ToolExecutor::new(tool_executor_config);
+
+        // Register all tool functions
+        for tool_def in &tool_definitions {
+            tool_executor.register_tool(&tool_def.name, tool_def.function);
+        }
+
         Self {
             config,
             registry: CommandRegistry::with_defaults(),
@@ -189,6 +214,7 @@ impl Repl {
             fun_facts_enabled,
             fun_fact_delay,
             agent_manager,
+            tool_executor,
         }
     }
 
