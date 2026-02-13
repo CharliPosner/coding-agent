@@ -13,6 +13,7 @@ pub mod progress;
 pub mod spinner;
 pub mod syntax;
 pub mod theme;
+pub mod thinking;
 pub mod tool_result;
 pub mod tool_spinner;
 
@@ -27,5 +28,6 @@ pub use progress::ProgressBar;
 pub use spinner::Spinner;
 pub use syntax::SyntaxHighlighter;
 pub use theme::{Color, Theme};
+pub use thinking::ThinkingMessages;
 pub use tool_result::{ToolResultConfig, ToolResultFormatter};
 pub use tool_spinner::{ToolExecutionSpinner, ToolStatus};

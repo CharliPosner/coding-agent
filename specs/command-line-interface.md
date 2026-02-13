@@ -1269,7 +1269,7 @@ src/
 - [x] Fun facts API integration (`reqwest`)
 - [x] Fact caching (local storage)
 - [x] Fallback to curated list
-- [ ] Thinking messages rotation
+- [x] Thinking messages rotation
 - [ ] Long-wait detection (>10s)
 - [ ] Fun fact display during long waits
 - [ ] Configurable enable/disable
