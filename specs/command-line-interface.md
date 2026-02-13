@@ -1083,7 +1083,7 @@ src/
 **Deliverables:**
 - [x] Wire tools from `coding-agent-core` into CLI's API calls
 - [x] `read_file` tool - Read file contents
-- [ ] `write_file` tool - Create/overwrite files
+- [x] `write_file` tool - Create/overwrite files
 - [ ] `edit_file` tool - Make targeted edits to existing files
 - [ ] `list_files` tool - List directory contents
 - [ ] `bash` tool - Execute shell commands
