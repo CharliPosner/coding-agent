@@ -1208,9 +1208,9 @@ src/
 - [x] `/spec <name>` - create spec file, enter planning mode
 - [x] Planning mode (different prompt behavior)
 - [x] Spec file template generation
-- [ ] `/document <topic>` - Obsidian integration
-- [ ] Vault search functionality
-- [ ] Note creation and update
+- [x] `/document <topic>` - Obsidian integration
+- [x] Vault search functionality
+- [x] Note creation and update
 - [ ] `/model [name]` - switch AI model
 - [ ] Model availability validation
 

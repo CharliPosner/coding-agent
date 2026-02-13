@@ -9,6 +9,7 @@ pub mod config;
 mod context;
 mod cost;
 mod diff;
+mod document;
 mod exit;
 mod help;
 mod history;
@@ -85,6 +86,7 @@ impl CommandRegistry {
         registry.register(&context::ContextCommand);
         registry.register(&cost::CostCommand);
         registry.register(&diff::DiffCommand);
+        registry.register(&document::DocumentCommand);
         registry.register(&exit::ExitCommand);
         registry.register(&exit::QuitCommand);
         registry.register(&exit::QCommand);
