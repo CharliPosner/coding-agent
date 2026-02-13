@@ -3,6 +3,7 @@
 //! This library provides the core functionality for the coding-agent CLI,
 //! including the REPL, commands, UI components, and integrations.
 
+pub mod agents;
 pub mod cli;
 pub mod config;
 pub mod integrations;
@@ -20,4 +21,5 @@ pub use permissions::{
 };
 pub use tokens::{ModelPricing, TokenCount, TokenCounter, TokenCounterError};
 pub use tools::{ErrorCategory, ToolError, ToolExecutionResult, ToolExecutor, ToolExecutorConfig};
+pub use agents::{FixAgent, FixAgentConfig, FixAttempt, FixResult, FixStatus};
 pub use ui::ContextBar;
