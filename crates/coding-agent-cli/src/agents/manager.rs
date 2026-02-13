@@ -294,7 +294,9 @@ impl AgentManager {
         // Take the agent out of the map
         let mut agent = {
             let mut agents = self.agents.lock().unwrap();
-            agents.remove(&id).ok_or_else(|| format!("Agent {:?} not found", id))?
+            agents
+                .remove(&id)
+                .ok_or_else(|| format!("Agent {:?} not found", id))?
         };
 
         // Wait for completion
@@ -340,10 +342,12 @@ impl AgentManager {
         let agents = self.agents.lock().unwrap();
         agents
             .values()
-            .filter(|agent| !matches!(
-                agent.status.state,
-                AgentState::Complete | AgentState::Failed | AgentState::Cancelled
-            ))
+            .filter(|agent| {
+                !matches!(
+                    agent.status.state,
+                    AgentState::Complete | AgentState::Failed | AgentState::Cancelled
+                )
+            })
             .count()
     }
 
@@ -542,7 +546,10 @@ mod tests {
         // Initially should be queued
         let status = manager.get_status(id).unwrap();
         assert_eq!(status.name, "test-agent");
-        assert!(matches!(status.state, AgentState::Queued | AgentState::Running));
+        assert!(matches!(
+            status.state,
+            AgentState::Queued | AgentState::Running
+        ));
 
         // Wait for completion
         let result = manager.wait(id).await;
@@ -582,42 +589,26 @@ mod tests {
         let manager = AgentManager::new();
 
         // Spawn multiple agents
-        let id1 = manager.spawn(
-            "agent-1".to_string(),
-            "First agent".to_string(),
-            || {
-                std::thread::sleep(Duration::from_millis(100));
-                Ok("result-1".to_string())
-            },
-        );
+        let id1 = manager.spawn("agent-1".to_string(), "First agent".to_string(), || {
+            std::thread::sleep(Duration::from_millis(100));
+            Ok("result-1".to_string())
+        });
 
-        let id2 = manager.spawn(
-            "agent-2".to_string(),
-            "Second agent".to_string(),
-            || {
-                std::thread::sleep(Duration::from_millis(100));
-                Ok("result-2".to_string())
-            },
-        );
+        let id2 = manager.spawn("agent-2".to_string(), "Second agent".to_string(), || {
+            std::thread::sleep(Duration::from_millis(100));
+            Ok("result-2".to_string())
+        });
 
-        let id3 = manager.spawn(
-            "agent-3".to_string(),
-            "Third agent".to_string(),
-            || {
-                std::thread::sleep(Duration::from_millis(100));
-                Ok("result-3".to_string())
-            },
-        );
+        let id3 = manager.spawn("agent-3".to_string(), "Third agent".to_string(), || {
+            std::thread::sleep(Duration::from_millis(100));
+            Ok("result-3".to_string())
+        });
 
         // Check active count
         assert_eq!(manager.active_count(), 3);
 
         // Wait for all to complete
-        let (r1, r2, r3) = tokio::join!(
-            manager.wait(id1),
-            manager.wait(id2),
-            manager.wait(id3)
-        );
+        let (r1, r2, r3) = tokio::join!(manager.wait(id1), manager.wait(id2), manager.wait(id3));
 
         assert_eq!(r1.unwrap(), "result-1");
         assert_eq!(r2.unwrap(), "result-2");
@@ -666,9 +657,15 @@ mod tests {
     async fn test_wait_all_success() {
         let manager = AgentManager::new();
 
-        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("result1".to_string()));
-        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Ok("result2".to_string()));
-        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || Ok("result3".to_string()));
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || {
+            Ok("result1".to_string())
+        });
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || {
+            Ok("result2".to_string())
+        });
+        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || {
+            Ok("result3".to_string())
+        });
 
         let results = manager.wait_all(vec![id1, id2, id3]).await;
 
@@ -684,9 +681,15 @@ mod tests {
     async fn test_wait_all_with_failure() {
         let manager = AgentManager::new();
 
-        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("result1".to_string()));
-        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Err("error2".to_string()));
-        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || Ok("result3".to_string()));
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || {
+            Ok("result1".to_string())
+        });
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || {
+            Err("error2".to_string())
+        });
+        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || {
+            Ok("result3".to_string())
+        });
 
         let results = manager.wait_all(vec![id1, id2, id3]).await;
 
@@ -729,9 +732,15 @@ mod tests {
     async fn test_wait_all_parallel_with_failure() {
         let manager = AgentManager::new();
 
-        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("ok1".to_string()));
-        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Err("fail2".to_string()));
-        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || Err("fail3".to_string()));
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || {
+            Ok("ok1".to_string())
+        });
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || {
+            Err("fail2".to_string())
+        });
+        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || {
+            Err("fail3".to_string())
+        });
 
         let results = manager.wait_all_parallel(vec![id1, id2, id3]).await;
 
@@ -744,22 +753,24 @@ mod tests {
     async fn test_aggregate_results() {
         let manager = AgentManager::new();
 
-        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("apple".to_string()));
-        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Ok("banana".to_string()));
-        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || Ok("cherry".to_string()));
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || {
+            Ok("apple".to_string())
+        });
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || {
+            Ok("banana".to_string())
+        });
+        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || {
+            Ok("cherry".to_string())
+        });
 
         let result = manager
-            .aggregate_results(
-                vec![id1, id2, id3],
-                String::new(),
-                |acc, s| {
-                    if acc.is_empty() {
-                        s
-                    } else {
-                        format!("{}, {}", acc, s)
-                    }
+            .aggregate_results(vec![id1, id2, id3], String::new(), |acc, s| {
+                if acc.is_empty() {
+                    s
+                } else {
+                    format!("{}, {}", acc, s)
                 }
-            )
+            })
             .await;
 
         assert!(result.is_ok());
@@ -770,15 +781,19 @@ mod tests {
     async fn test_aggregate_results_with_failure() {
         let manager = AgentManager::new();
 
-        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("ok".to_string()));
-        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Err("failed".to_string()));
+        let id1 = manager.spawn(
+            "a1".to_string(),
+            "desc".to_string(),
+            || Ok("ok".to_string()),
+        );
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || {
+            Err("failed".to_string())
+        });
 
         let result = manager
-            .aggregate_results(
-                vec![id1, id2],
-                0,
-                |acc, s| acc + s.parse::<i32>().unwrap_or(0)
-            )
+            .aggregate_results(vec![id1, id2], 0, |acc, s| {
+                acc + s.parse::<i32>().unwrap_or(0)
+            })
             .await;
 
         assert!(result.is_err());
@@ -844,8 +859,12 @@ mod tests {
     async fn test_wait_first_success_all_fail() {
         let manager = AgentManager::new();
 
-        let id1 = manager.spawn("fail1".to_string(), "desc".to_string(), || Err("error1".to_string()));
-        let id2 = manager.spawn("fail2".to_string(), "desc".to_string(), || Err("error2".to_string()));
+        let id1 = manager.spawn("fail1".to_string(), "desc".to_string(), || {
+            Err("error1".to_string())
+        });
+        let id2 = manager.spawn("fail2".to_string(), "desc".to_string(), || {
+            Err("error2".to_string())
+        });
 
         let result = manager.wait_first_success(vec![id1, id2]).await;
 
@@ -1066,7 +1085,10 @@ mod tests {
         // Initially should be queued
         let status = manager.get_status(id).unwrap();
         assert_eq!(status.name, "async-agent");
-        assert!(matches!(status.state, AgentState::Queued | AgentState::Running));
+        assert!(matches!(
+            status.state,
+            AgentState::Queued | AgentState::Running
+        ));
 
         // Wait for completion
         let result = manager.wait(id).await;
@@ -1153,7 +1175,11 @@ mod tests {
         assert_eq!(results[2], "result-3");
 
         // Verify parallel execution - should complete in roughly the time of one task
-        assert!(elapsed < Duration::from_millis(200), "Expected parallel execution to take ~100ms, took {:?}", elapsed);
+        assert!(
+            elapsed < Duration::from_millis(200),
+            "Expected parallel execution to take ~100ms, took {:?}",
+            elapsed
+        );
     }
 
     #[tokio::test]
@@ -1191,9 +1217,7 @@ mod tests {
         let id = manager.spawn_async(
             "failing-async".to_string(),
             "This will fail".to_string(),
-            |_| async {
-                Err("intentional async error".to_string())
-            },
+            |_| async { Err("intentional async error".to_string()) },
         );
 
         // Wait for it to fail
@@ -1207,14 +1231,10 @@ mod tests {
         let manager = AgentManager::new();
 
         // Spawn both sync and async agents
-        let sync_id = manager.spawn(
-            "sync-agent".to_string(),
-            "Sync task".to_string(),
-            || {
-                std::thread::sleep(Duration::from_millis(50));
-                Ok("sync-result".to_string())
-            },
-        );
+        let sync_id = manager.spawn("sync-agent".to_string(), "Sync task".to_string(), || {
+            std::thread::sleep(Duration::from_millis(50));
+            Ok("sync-result".to_string())
+        });
 
         let async_id = manager.spawn_async(
             "async-agent".to_string(),
@@ -1265,6 +1285,10 @@ mod tests {
         assert_eq!(results.len(), 20);
 
         // Verify parallel execution - 20 agents at 100ms each should not take 2 seconds
-        assert!(elapsed < Duration::from_millis(500), "Expected parallel execution, took {:?}", elapsed);
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "Expected parallel execution, took {:?}",
+            elapsed
+        );
     }
 }

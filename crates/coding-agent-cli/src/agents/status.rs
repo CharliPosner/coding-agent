@@ -24,7 +24,10 @@ pub enum AgentState {
 impl AgentState {
     /// Returns true if the agent is in a terminal state (complete, failed, or cancelled).
     pub fn is_terminal(&self) -> bool {
-        matches!(self, AgentState::Complete | AgentState::Failed | AgentState::Cancelled)
+        matches!(
+            self,
+            AgentState::Complete | AgentState::Failed | AgentState::Cancelled
+        )
     }
 
     /// Returns true if the agent is active (queued or running).
@@ -46,11 +49,11 @@ impl AgentState {
     /// Returns a color code for the state (ANSI escape).
     pub fn color(&self) -> &'static str {
         match self {
-            AgentState::Queued => "\x1b[90m",      // Gray
-            AgentState::Running => "\x1b[33m",     // Yellow
-            AgentState::Complete => "\x1b[32m",    // Green
-            AgentState::Failed => "\x1b[31m",      // Red
-            AgentState::Cancelled => "\x1b[90m",   // Gray
+            AgentState::Queued => "\x1b[90m",    // Gray
+            AgentState::Running => "\x1b[33m",   // Yellow
+            AgentState::Complete => "\x1b[32m",  // Green
+            AgentState::Failed => "\x1b[31m",    // Red
+            AgentState::Cancelled => "\x1b[90m", // Gray
         }
     }
 }
@@ -180,11 +183,7 @@ mod tests {
 
     #[test]
     fn test_agent_status_new() {
-        let status = AgentStatus::new(
-            AgentId(1),
-            "test-agent".to_string(),
-            "Testing".to_string()
-        );
+        let status = AgentStatus::new(AgentId(1), "test-agent".to_string(), "Testing".to_string());
 
         assert_eq!(status.id, AgentId(1));
         assert_eq!(status.name, "test-agent");
@@ -195,11 +194,7 @@ mod tests {
 
     #[test]
     fn test_agent_status_transitions() {
-        let mut status = AgentStatus::new(
-            AgentId(1),
-            "test".to_string(),
-            "desc".to_string()
-        );
+        let mut status = AgentStatus::new(AgentId(1), "test".to_string(), "desc".to_string());
 
         // Start
         status.start();
@@ -213,11 +208,7 @@ mod tests {
 
     #[test]
     fn test_agent_status_fail() {
-        let mut status = AgentStatus::new(
-            AgentId(1),
-            "test".to_string(),
-            "desc".to_string()
-        );
+        let mut status = AgentStatus::new(AgentId(1), "test".to_string(), "desc".to_string());
 
         status.start();
         status.fail();
@@ -226,11 +217,7 @@ mod tests {
 
     #[test]
     fn test_agent_status_cancel() {
-        let mut status = AgentStatus::new(
-            AgentId(1),
-            "test".to_string(),
-            "desc".to_string()
-        );
+        let mut status = AgentStatus::new(AgentId(1), "test".to_string(), "desc".to_string());
 
         status.start();
         status.cancel();
@@ -239,11 +226,7 @@ mod tests {
 
     #[test]
     fn test_update_progress() {
-        let mut status = AgentStatus::new(
-            AgentId(1),
-            "test".to_string(),
-            "desc".to_string()
-        );
+        let mut status = AgentStatus::new(AgentId(1), "test".to_string(), "desc".to_string());
 
         status.update_progress(50);
         assert_eq!(status.progress, 50);
@@ -255,11 +238,7 @@ mod tests {
 
     #[test]
     fn test_progress_bar_formatting() {
-        let mut status = AgentStatus::new(
-            AgentId(1),
-            "test".to_string(),
-            "desc".to_string()
-        );
+        let mut status = AgentStatus::new(AgentId(1), "test".to_string(), "desc".to_string());
 
         status.start();
         status.update_progress(50);
@@ -274,11 +253,7 @@ mod tests {
 
     #[test]
     fn test_progress_bar_complete_no_bar() {
-        let mut status = AgentStatus::new(
-            AgentId(1),
-            "test".to_string(),
-            "desc".to_string()
-        );
+        let mut status = AgentStatus::new(AgentId(1), "test".to_string(), "desc".to_string());
 
         status.complete();
         let bar = status.format_progress_bar();
@@ -290,7 +265,7 @@ mod tests {
         let mut status = AgentStatus::new(
             AgentId(1),
             "test-agent".to_string(),
-            "Testing something".to_string()
+            "Testing something".to_string(),
         );
 
         status.start();

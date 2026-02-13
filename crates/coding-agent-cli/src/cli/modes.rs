@@ -44,7 +44,8 @@ Your role is to:
 - Ask clarifying questions when requirements are unclear
 
 You have access to various tools for file operations, shell commands, and code search.
-Use them when appropriate to help answer questions or complete tasks."#.to_string()
+Use them when appropriate to help answer questions or complete tasks."#
+                    .to_string()
             }
             Mode::Planning { spec_file } => {
                 format!(
@@ -79,9 +80,7 @@ Remember: You're helping the user think through their design, not designing it f
     pub fn indicator(&self) -> Option<String> {
         match self {
             Mode::Normal => None,
-            Mode::Planning { spec_file } => {
-                Some(format!("📋 Planning: {}", spec_file))
-            }
+            Mode::Planning { spec_file } => Some(format!("📋 Planning: {}", spec_file)),
         }
     }
 }

@@ -82,9 +82,7 @@ impl LongWaitDetector {
 
     /// Check if the long wait threshold has been exceeded
     pub fn has_exceeded_threshold(&self) -> bool {
-        self.elapsed()
-            .map(|e| e >= self.threshold)
-            .unwrap_or(false)
+        self.elapsed().map(|e| e >= self.threshold).unwrap_or(false)
     }
 
     /// Get the threshold duration
@@ -292,19 +290,13 @@ mod tests {
         // Second operation
         detector.start();
         thread::sleep(Duration::from_millis(100));
-        assert!(
-            detector.check(),
-            "Should trigger again for new operation"
-        );
+        assert!(detector.check(), "Should trigger again for new operation");
         detector.stop();
 
         // Third operation - short one
         detector.start();
         thread::sleep(Duration::from_millis(10));
-        assert!(
-            !detector.check(),
-            "Should not trigger for short operation"
-        );
+        assert!(!detector.check(), "Should not trigger for short operation");
         detector.stop();
     }
 
@@ -340,7 +332,10 @@ mod tests {
 
         // Just before threshold - use a safer margin
         thread::sleep(Duration::from_millis(50));
-        assert!(!detector.check(), "Should not trigger well before threshold");
+        assert!(
+            !detector.check(),
+            "Should not trigger well before threshold"
+        );
 
         // Wait to definitely exceed threshold
         thread::sleep(Duration::from_millis(60));

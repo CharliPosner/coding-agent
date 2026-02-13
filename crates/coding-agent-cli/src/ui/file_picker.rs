@@ -177,7 +177,9 @@ impl FilePicker {
                             self.clear_display(&mut stdout)?;
                             return Ok(FilePickerResult::Cancelled);
                         }
-                        KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        KeyCode::Char('c')
+                            if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
+                        {
                             // Ctrl+C also cancels
                             self.clear_display(&mut stdout)?;
                             return Ok(FilePickerResult::Cancelled);

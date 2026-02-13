@@ -130,7 +130,12 @@ impl Command for DocumentCommand {
         );
 
         for (i, result) in search_results.iter().take(5).enumerate() {
-            output.push_str(&format!("{}. {} (score: {:.2})\n", i + 1, result.note.title, result.score));
+            output.push_str(&format!(
+                "{}. {} (score: {:.2})\n",
+                i + 1,
+                result.note.title,
+                result.score
+            ));
             output.push_str(&format!("   Path: {}\n", result.note.path.display()));
             if let Some(excerpt) = &result.excerpt {
                 output.push_str(&format!("   ...{}\n", excerpt));

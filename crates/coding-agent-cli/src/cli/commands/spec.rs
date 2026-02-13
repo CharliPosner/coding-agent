@@ -62,10 +62,7 @@ impl Command for SpecCommand {
                         output: Some(output),
                     }
                 }
-                Err(e) => CommandResult::Error(format!(
-                    "Failed to read spec file: {}",
-                    e
-                )),
+                Err(e) => CommandResult::Error(format!("Failed to read spec file: {}", e)),
             }
         } else {
             // Create new spec with template
@@ -101,10 +98,7 @@ impl Command for SpecCommand {
                         output: Some(output),
                     }
                 }
-                Err(e) => CommandResult::Error(format!(
-                    "Failed to create spec file: {}",
-                    e
-                )),
+                Err(e) => CommandResult::Error(format!("Failed to create spec file: {}", e)),
             }
         }
     }
@@ -112,7 +106,10 @@ impl Command for SpecCommand {
 
 /// Validate that a spec name contains only safe characters
 fn is_valid_spec_name(name: &str) -> bool {
-    !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
 }
 
 /// Get the path for a spec file
@@ -222,9 +219,11 @@ fn truncate_content(content: &str, max_len: usize) -> String {
         content.to_string()
     } else {
         let truncated = &content[..max_len];
-        format!("{}...\n\n[Content truncated - {} more characters]",
-                truncated,
-                content.len() - max_len)
+        format!(
+            "{}...\n\n[Content truncated - {} more characters]",
+            truncated,
+            content.len() - max_len
+        )
     }
 }
 
@@ -248,7 +247,10 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let test_dir = env::temp_dir().join(format!("coding-agent-spec-tests-{:?}-{}", test_id, timestamp));
+        let test_dir = env::temp_dir().join(format!(
+            "coding-agent-spec-tests-{:?}-{}",
+            test_id, timestamp
+        ));
         test_dir
     }
 

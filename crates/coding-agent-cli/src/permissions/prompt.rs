@@ -86,8 +86,8 @@ impl PermissionPrompt {
             if event::poll(Duration::from_millis(100))
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
             {
-                if let Event::Key(key_event) = event::read()
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+                if let Event::Key(key_event) =
+                    event::read().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
                 {
                     if let Some(response) = self.handle_key_event(key_event) {
                         println!(); // Move to next line after input

@@ -351,8 +351,8 @@ mod tests {
         let trusted_path = temp_dir.path().join("trusted");
         fs::create_dir(&trusted_path).expect("Should create trusted dir");
 
-        let trusted =
-            TrustedPaths::new(&[trusted_path.to_string_lossy().to_string()]).expect("Should create");
+        let trusted = TrustedPaths::new(&[trusted_path.to_string_lossy().to_string()])
+            .expect("Should create");
 
         // The absolute path should be trusted
         assert!(trusted.is_trusted(&trusted_path));

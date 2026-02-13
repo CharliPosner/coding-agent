@@ -162,11 +162,10 @@ impl FunFactCache {
             return Ok(Self::new());
         }
 
-        let contents = fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read cache file: {}", e))?;
+        let contents =
+            fs::read_to_string(path).map_err(|e| format!("Failed to read cache file: {}", e))?;
 
-        serde_json::from_str(&contents)
-            .map_err(|e| format!("Failed to parse cache file: {}", e))
+        serde_json::from_str(&contents).map_err(|e| format!("Failed to parse cache file: {}", e))
     }
 
     /// Save cache to the default path
@@ -186,8 +185,7 @@ impl FunFactCache {
         let contents = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize cache: {}", e))?;
 
-        fs::write(path, contents)
-            .map_err(|e| format!("Failed to write cache file: {}", e))
+        fs::write(path, contents).map_err(|e| format!("Failed to write cache file: {}", e))
     }
 
     /// Add a fact to the cache
@@ -492,8 +490,8 @@ impl Default for FunFactClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::thread;
+    use tempfile::TempDir;
 
     #[test]
     fn test_fun_fact_new() {

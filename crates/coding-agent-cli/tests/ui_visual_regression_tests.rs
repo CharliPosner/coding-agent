@@ -101,7 +101,11 @@ fn test_progress_bar_increment() {
     result.push_str(&format!("After +25: {}\n", bar.position()));
 
     bar.inc(65);
-    result.push_str(&format!("After +65: {} (percent: {}%)\n", bar.position(), bar.percent()));
+    result.push_str(&format!(
+        "After +65: {} (percent: {}%)\n",
+        bar.position(),
+        bar.percent()
+    ));
 
     assert_snapshot!("progress_bar_increment", normalize_whitespace(&result));
 }
@@ -199,7 +203,10 @@ fn test_tool_result_file_content_short() {
     let content = "fn main() {\n    println!(\"Hello, World!\");\n}";
     let result = formatter.format_result("read_file", content);
     let clean = strip_ansi(&result);
-    assert_snapshot!("tool_result_file_content_short", normalize_whitespace(&clean));
+    assert_snapshot!(
+        "tool_result_file_content_short",
+        normalize_whitespace(&clean)
+    );
 }
 
 #[test]
@@ -213,10 +220,16 @@ fn test_tool_result_file_content_truncated() {
     };
     let formatter = ToolResultFormatter::with_config(config);
 
-    let content = (0..10).map(|i| format!("line {}", i)).collect::<Vec<_>>().join("\n");
+    let content = (0..10)
+        .map(|i| format!("line {}", i))
+        .collect::<Vec<_>>()
+        .join("\n");
     let result = formatter.format_result("read_file", &content);
     let clean = strip_ansi(&result);
-    assert_snapshot!("tool_result_file_content_truncated", normalize_whitespace(&clean));
+    assert_snapshot!(
+        "tool_result_file_content_truncated",
+        normalize_whitespace(&clean)
+    );
 }
 
 #[test]
@@ -255,7 +268,8 @@ fn test_tool_result_bash_output_empty() {
 #[test]
 fn test_tool_result_bash_output_multi_line() {
     let formatter = ToolResultFormatter::new();
-    let output = "Compiling coding-agent v0.1.0\nFinished dev [unoptimized + debuginfo] target(s) in 2.3s";
+    let output =
+        "Compiling coding-agent v0.1.0\nFinished dev [unoptimized + debuginfo] target(s) in 2.3s";
     let result = formatter.format_result("bash", output);
     let clean = strip_ansi(&result);
     assert_snapshot!("tool_result_bash_multi_line", normalize_whitespace(&clean));
@@ -266,7 +280,10 @@ fn test_tool_result_search_no_matches() {
     let formatter = ToolResultFormatter::new();
     let result = formatter.format_result("code_search", "No matches found");
     let clean = strip_ansi(&result);
-    assert_snapshot!("tool_result_search_no_matches", normalize_whitespace(&clean));
+    assert_snapshot!(
+        "tool_result_search_no_matches",
+        normalize_whitespace(&clean)
+    );
 }
 
 #[test]
@@ -275,7 +292,10 @@ fn test_tool_result_search_with_matches() {
     let output = "src/main.rs:10:fn main()\nsrc/lib.rs:25:pub fn test()\ntests/integration.rs:5:fn integration_test()";
     let result = formatter.format_result("code_search", output);
     let clean = strip_ansi(&result);
-    assert_snapshot!("tool_result_search_with_matches", normalize_whitespace(&clean));
+    assert_snapshot!(
+        "tool_result_search_with_matches",
+        normalize_whitespace(&clean)
+    );
 }
 
 // ============================================================================
@@ -287,13 +307,34 @@ fn test_theme_all_colors_minimal() {
     let theme = Theme::new(ThemeStyle::Minimal);
     let mut output = String::new();
 
-    output.push_str(&format!("User: {}\n", theme.apply(Color::UserInput, "User input text")));
-    output.push_str(&format!("Agent: {}\n", theme.apply(Color::Agent, "Agent response text")));
-    output.push_str(&format!("Tool: {}\n", theme.apply(Color::Tool, "Tool execution")));
-    output.push_str(&format!("Success: {}\n", theme.apply(Color::Success, "Operation succeeded")));
-    output.push_str(&format!("Error: {}\n", theme.apply(Color::Error, "Error occurred")));
-    output.push_str(&format!("Warning: {}\n", theme.apply(Color::Warning, "Warning message")));
-    output.push_str(&format!("Muted: {}\n", theme.apply(Color::Muted, "Secondary info")));
+    output.push_str(&format!(
+        "User: {}\n",
+        theme.apply(Color::UserInput, "User input text")
+    ));
+    output.push_str(&format!(
+        "Agent: {}\n",
+        theme.apply(Color::Agent, "Agent response text")
+    ));
+    output.push_str(&format!(
+        "Tool: {}\n",
+        theme.apply(Color::Tool, "Tool execution")
+    ));
+    output.push_str(&format!(
+        "Success: {}\n",
+        theme.apply(Color::Success, "Operation succeeded")
+    ));
+    output.push_str(&format!(
+        "Error: {}\n",
+        theme.apply(Color::Error, "Error occurred")
+    ));
+    output.push_str(&format!(
+        "Warning: {}\n",
+        theme.apply(Color::Warning, "Warning message")
+    ));
+    output.push_str(&format!(
+        "Muted: {}\n",
+        theme.apply(Color::Muted, "Secondary info")
+    ));
     output.push_str(&format!("Cost: {}\n", theme.apply(Color::Cost, "$1.50")));
 
     let clean = strip_ansi(&output);
@@ -305,13 +346,34 @@ fn test_theme_all_colors_colorful() {
     let theme = Theme::new(ThemeStyle::Colorful);
     let mut output = String::new();
 
-    output.push_str(&format!("User: {}\n", theme.apply(Color::UserInput, "User input text")));
-    output.push_str(&format!("Agent: {}\n", theme.apply(Color::Agent, "Agent response text")));
-    output.push_str(&format!("Tool: {}\n", theme.apply(Color::Tool, "Tool execution")));
-    output.push_str(&format!("Success: {}\n", theme.apply(Color::Success, "Operation succeeded")));
-    output.push_str(&format!("Error: {}\n", theme.apply(Color::Error, "Error occurred")));
-    output.push_str(&format!("Warning: {}\n", theme.apply(Color::Warning, "Warning message")));
-    output.push_str(&format!("Muted: {}\n", theme.apply(Color::Muted, "Secondary info")));
+    output.push_str(&format!(
+        "User: {}\n",
+        theme.apply(Color::UserInput, "User input text")
+    ));
+    output.push_str(&format!(
+        "Agent: {}\n",
+        theme.apply(Color::Agent, "Agent response text")
+    ));
+    output.push_str(&format!(
+        "Tool: {}\n",
+        theme.apply(Color::Tool, "Tool execution")
+    ));
+    output.push_str(&format!(
+        "Success: {}\n",
+        theme.apply(Color::Success, "Operation succeeded")
+    ));
+    output.push_str(&format!(
+        "Error: {}\n",
+        theme.apply(Color::Error, "Error occurred")
+    ));
+    output.push_str(&format!(
+        "Warning: {}\n",
+        theme.apply(Color::Warning, "Warning message")
+    ));
+    output.push_str(&format!(
+        "Muted: {}\n",
+        theme.apply(Color::Muted, "Secondary info")
+    ));
     output.push_str(&format!("Cost: {}\n", theme.apply(Color::Cost, "$1.50")));
 
     let clean = strip_ansi(&output);
@@ -323,13 +385,34 @@ fn test_theme_all_colors_monochrome() {
     let theme = Theme::new(ThemeStyle::Monochrome);
     let mut output = String::new();
 
-    output.push_str(&format!("User: {}\n", theme.apply(Color::UserInput, "User input text")));
-    output.push_str(&format!("Agent: {}\n", theme.apply(Color::Agent, "Agent response text")));
-    output.push_str(&format!("Tool: {}\n", theme.apply(Color::Tool, "Tool execution")));
-    output.push_str(&format!("Success: {}\n", theme.apply(Color::Success, "Operation succeeded")));
-    output.push_str(&format!("Error: {}\n", theme.apply(Color::Error, "Error occurred")));
-    output.push_str(&format!("Warning: {}\n", theme.apply(Color::Warning, "Warning message")));
-    output.push_str(&format!("Muted: {}\n", theme.apply(Color::Muted, "Secondary info")));
+    output.push_str(&format!(
+        "User: {}\n",
+        theme.apply(Color::UserInput, "User input text")
+    ));
+    output.push_str(&format!(
+        "Agent: {}\n",
+        theme.apply(Color::Agent, "Agent response text")
+    ));
+    output.push_str(&format!(
+        "Tool: {}\n",
+        theme.apply(Color::Tool, "Tool execution")
+    ));
+    output.push_str(&format!(
+        "Success: {}\n",
+        theme.apply(Color::Success, "Operation succeeded")
+    ));
+    output.push_str(&format!(
+        "Error: {}\n",
+        theme.apply(Color::Error, "Error occurred")
+    ));
+    output.push_str(&format!(
+        "Warning: {}\n",
+        theme.apply(Color::Warning, "Warning message")
+    ));
+    output.push_str(&format!(
+        "Muted: {}\n",
+        theme.apply(Color::Muted, "Secondary info")
+    ));
     output.push_str(&format!("Cost: {}\n", theme.apply(Color::Cost, "$1.50")));
 
     let clean = strip_ansi(&output);
@@ -406,12 +489,16 @@ fn test_complete_tool_execution_sequence() {
     let mut output = String::new();
 
     // Simulate a file read operation
-    let file_content = "fn hello() {\n    println!(\"Hello, world!\");\n}\n\nfn main() {\n    hello();\n}";
+    let file_content =
+        "fn hello() {\n    println!(\"Hello, world!\");\n}\n\nfn main() {\n    hello();\n}";
     let result = formatter.format_result("read_file", file_content);
     output.push_str(&result);
 
     let clean = strip_ansi(&output);
-    assert_snapshot!("complete_tool_execution_sequence", normalize_whitespace(&clean));
+    assert_snapshot!(
+        "complete_tool_execution_sequence",
+        normalize_whitespace(&clean)
+    );
 }
 
 #[test]
@@ -424,7 +511,7 @@ fn test_error_display_flow() {
     // Show error
     let error = message_box.error(
         "Build failed",
-        "missing dependency 'serde'\n\nHelp: Add serde = \"1.0\" to Cargo.toml"
+        "missing dependency 'serde'\n\nHelp: Add serde = \"1.0\" to Cargo.toml",
     );
     output.push_str(&error);
     output.push_str("\n\n");
@@ -432,7 +519,7 @@ fn test_error_display_flow() {
     // Show fix message
     let fix_msg = message_box.render(
         Some("Auto-Fix"),
-        "→ Diagnosing issue...\n→ Found: Cargo.toml missing serde dependency\n→ Applying fix..."
+        "→ Diagnosing issue...\n→ Found: Cargo.toml missing serde dependency\n→ Applying fix...",
     );
     output.push_str(&fix_msg);
 
@@ -447,7 +534,8 @@ fn test_multiple_file_operations() {
 
     // Read operation
     output.push_str("=== READ ===\n");
-    let read_result = formatter.format_result("read_file", "fn main() {\n    println!(\"test\");\n}");
+    let read_result =
+        formatter.format_result("read_file", "fn main() {\n    println!(\"test\");\n}");
     output.push_str(&read_result);
     output.push_str("\n");
 
@@ -488,5 +576,8 @@ fn test_theme_formatting_consistency() {
         output.push_str("\n\n");
     }
 
-    assert_snapshot!("theme_formatting_consistency", normalize_whitespace(&output));
+    assert_snapshot!(
+        "theme_formatting_consistency",
+        normalize_whitespace(&output)
+    );
 }

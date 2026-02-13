@@ -7,9 +7,7 @@
 //!
 //! Run with: cargo bench --package coding-agent-cli
 
-use coding_agent_cli::{
-    ContextBar, Session, SessionManager, TokenCounter,
-};
+use coding_agent_cli::{ContextBar, Session, SessionManager, TokenCounter};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use tempfile::TempDir;
 
@@ -64,7 +62,8 @@ fn factorial(n: u64) -> u64 {
 fn main() {
     println!("Factorial of 5: {}", factorial(5));
 }
-"#.repeat(50); // Repeat to get a meaningful size
+"#
+    .repeat(50); // Repeat to get a meaningful size
 
     c.bench_function("token_count_code", |b| {
         b.iter(|| counter.count(black_box(&code)))

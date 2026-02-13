@@ -69,7 +69,11 @@ impl ToolExecutionSpinner {
     }
 
     /// Create a spinner with a target (e.g., file path being read)
-    pub fn with_target(tool_name: impl Into<String>, target: impl Into<String>, theme: Theme) -> Self {
+    pub fn with_target(
+        tool_name: impl Into<String>,
+        target: impl Into<String>,
+        theme: Theme,
+    ) -> Self {
         let tool_name = tool_name.into();
         let target = target.into();
         let bar = IndicatifBar::new_spinner();
@@ -132,7 +136,8 @@ impl ToolExecutionSpinner {
             display
         };
 
-        self.bar.finish_with_message(self.theme.apply(Color::Success, &msg));
+        self.bar
+            .finish_with_message(self.theme.apply(Color::Success, &msg));
     }
 
     /// Finish with success and a custom message
@@ -146,7 +151,8 @@ impl ToolExecutionSpinner {
             format!("✓ {}", message)
         };
 
-        self.bar.finish_with_message(self.theme.apply(Color::Success, &msg));
+        self.bar
+            .finish_with_message(self.theme.apply(Color::Success, &msg));
     }
 
     /// Finish with failure
@@ -164,13 +170,15 @@ impl ToolExecutionSpinner {
             format!("{} ({}): {}", display, duration_str, error)
         };
 
-        self.bar.finish_with_message(self.theme.apply(Color::Error, &msg));
+        self.bar
+            .finish_with_message(self.theme.apply(Color::Error, &msg));
     }
 
     /// Finish with failure and only show the error message
     pub fn finish_failed_simple(&self, error: &str) {
         let msg = format!("✗ {}", error);
-        self.bar.finish_with_message(self.theme.apply(Color::Error, &msg));
+        self.bar
+            .finish_with_message(self.theme.apply(Color::Error, &msg));
     }
 
     /// Finish and clear the spinner (for intermediate steps)
@@ -440,13 +448,9 @@ mod tests {
     #[test]
     fn test_format_tool_action_various_tools() {
         // Test various tool mappings
-        assert!(format_tool_action("code_search", Some("fn main"))
-            .starts_with("Searching"));
-        assert!(format_tool_action("list_files", Some("/src"))
-            .starts_with("Listing"));
-        assert!(format_tool_action("cargo_build", None)
-            .starts_with("Building"));
-        assert!(format_tool_action("cargo_test", Some("test_name"))
-            .starts_with("Testing"));
+        assert!(format_tool_action("code_search", Some("fn main")).starts_with("Searching"));
+        assert!(format_tool_action("list_files", Some("/src")).starts_with("Listing"));
+        assert!(format_tool_action("cargo_build", None).starts_with("Building"));
+        assert!(format_tool_action("cargo_test", Some("test_name")).starts_with("Testing"));
     }
 }

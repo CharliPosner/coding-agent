@@ -23,17 +23,15 @@ impl MockClaudeServer {
     pub async fn mock_simple_response(&self, content: &str) {
         Mock::given(method("POST"))
             .and(path("/v1/messages"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({
-                    "id": "msg_test123",
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": content}],
-                    "model": "claude-3-opus-20240229",
-                    "stop_reason": "end_turn",
-                    "usage": {"input_tokens": 10, "output_tokens": 20}
-                })),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "msg_test123",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": content}],
+                "model": "claude-3-opus-20240229",
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 10, "output_tokens": 20}
+            })))
             .mount(&self.server)
             .await;
     }
@@ -42,22 +40,20 @@ impl MockClaudeServer {
     pub async fn mock_tool_call(&self, tool_name: &str, tool_input: serde_json::Value) {
         Mock::given(method("POST"))
             .and(path("/v1/messages"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({
-                    "id": "msg_test456",
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{
-                        "type": "tool_use",
-                        "id": "tool_call_123",
-                        "name": tool_name,
-                        "input": tool_input
-                    }],
-                    "model": "claude-3-opus-20240229",
-                    "stop_reason": "tool_use",
-                    "usage": {"input_tokens": 15, "output_tokens": 30}
-                })),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "msg_test456",
+                "type": "message",
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "tool_call_123",
+                    "name": tool_name,
+                    "input": tool_input
+                }],
+                "model": "claude-3-opus-20240229",
+                "stop_reason": "tool_use",
+                "usage": {"input_tokens": 15, "output_tokens": 30}
+            })))
             .mount(&self.server)
             .await;
     }
@@ -69,57 +65,75 @@ impl MockClaudeServer {
 
         // Event stream-start
         body.push_str("event: message_start\n");
-        body.push_str(&format!("data: {}\n\n", json!({
-            "type": "message_start",
-            "message": {
-                "id": "msg_test789",
-                "type": "message",
-                "role": "assistant",
-                "model": "claude-3-opus-20240229",
-                "content": [],
-                "stop_reason": null,
-                "usage": {"input_tokens": 10, "output_tokens": 0}
-            }
-        })));
+        body.push_str(&format!(
+            "data: {}\n\n",
+            json!({
+                "type": "message_start",
+                "message": {
+                    "id": "msg_test789",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-opus-20240229",
+                    "content": [],
+                    "stop_reason": null,
+                    "usage": {"input_tokens": 10, "output_tokens": 0}
+                }
+            })
+        ));
 
         // Content block start
         body.push_str("event: content_block_start\n");
-        body.push_str(&format!("data: {}\n\n", json!({
-            "type": "content_block_start",
-            "index": 0,
-            "content_block": {"type": "text", "text": ""}
-        })));
+        body.push_str(&format!(
+            "data: {}\n\n",
+            json!({
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "text", "text": ""}
+            })
+        ));
 
         // Content deltas
         for chunk in chunks {
             body.push_str("event: content_block_delta\n");
-            body.push_str(&format!("data: {}\n\n", json!({
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {"type": "text_delta", "text": chunk}
-            })));
+            body.push_str(&format!(
+                "data: {}\n\n",
+                json!({
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": chunk}
+                })
+            ));
         }
 
         // Content block stop
         body.push_str("event: content_block_stop\n");
-        body.push_str(&format!("data: {}\n\n", json!({
-            "type": "content_block_stop",
-            "index": 0
-        })));
+        body.push_str(&format!(
+            "data: {}\n\n",
+            json!({
+                "type": "content_block_stop",
+                "index": 0
+            })
+        ));
 
         // Message delta with stop reason
         body.push_str("event: message_delta\n");
-        body.push_str(&format!("data: {}\n\n", json!({
-            "type": "message_delta",
-            "delta": {"stop_reason": "end_turn", "stop_sequence": null},
-            "usage": {"output_tokens": 20}
-        })));
+        body.push_str(&format!(
+            "data: {}\n\n",
+            json!({
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn", "stop_sequence": null},
+                "usage": {"output_tokens": 20}
+            })
+        ));
 
         // Message stop
         body.push_str("event: message_stop\n");
-        body.push_str(&format!("data: {}\n\n", json!({
-            "type": "message_stop"
-        })));
+        body.push_str(&format!(
+            "data: {}\n\n",
+            json!({
+                "type": "message_stop"
+            })
+        ));
 
         Mock::given(method("POST"))
             .and(path("/v1/messages"))
@@ -137,15 +151,13 @@ impl MockClaudeServer {
     pub async fn mock_rate_limit(&self) {
         Mock::given(method("POST"))
             .and(path("/v1/messages"))
-            .respond_with(
-                ResponseTemplate::new(429).set_body_json(json!({
-                    "type": "error",
-                    "error": {
-                        "type": "rate_limit_error",
-                        "message": "Rate limited"
-                    }
-                })),
-            )
+            .respond_with(ResponseTemplate::new(429).set_body_json(json!({
+                "type": "error",
+                "error": {
+                    "type": "rate_limit_error",
+                    "message": "Rate limited"
+                }
+            })))
             .mount(&self.server)
             .await;
     }
@@ -163,15 +175,13 @@ impl MockClaudeServer {
     pub async fn mock_auth_error(&self) {
         Mock::given(method("POST"))
             .and(path("/v1/messages"))
-            .respond_with(
-                ResponseTemplate::new(401).set_body_json(json!({
-                    "type": "error",
-                    "error": {
-                        "type": "authentication_error",
-                        "message": "Invalid API key"
-                    }
-                })),
-            )
+            .respond_with(ResponseTemplate::new(401).set_body_json(json!({
+                "type": "error",
+                "error": {
+                    "type": "authentication_error",
+                    "message": "Invalid API key"
+                }
+            })))
             .mount(&self.server)
             .await;
     }
@@ -182,17 +192,15 @@ impl MockClaudeServer {
         for (i, response) in responses.iter().enumerate() {
             Mock::given(method("POST"))
                 .and(path("/v1/messages"))
-                .respond_with(
-                    ResponseTemplate::new(200).set_body_json(json!({
-                        "id": format!("msg_test{}", i),
-                        "type": "message",
-                        "role": "assistant",
-                        "content": [{"type": "text", "text": response}],
-                        "model": "claude-3-opus-20240229",
-                        "stop_reason": "end_turn",
-                        "usage": {"input_tokens": 10 + i * 5, "output_tokens": 20 + i * 5}
-                    })),
-                )
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "id": format!("msg_test{}", i),
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": response}],
+                    "model": "claude-3-opus-20240229",
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 10 + i * 5, "output_tokens": 20 + i * 5}
+                })))
                 .up_to_n_times(1)
                 .mount(&self.server)
                 .await;
@@ -200,28 +208,31 @@ impl MockClaudeServer {
     }
 
     /// Mock a response with both text and tool calls
-    pub async fn mock_text_and_tool_call(&self, text: &str, tool_name: &str, tool_input: serde_json::Value) {
+    pub async fn mock_text_and_tool_call(
+        &self,
+        text: &str,
+        tool_name: &str,
+        tool_input: serde_json::Value,
+    ) {
         Mock::given(method("POST"))
             .and(path("/v1/messages"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({
-                    "id": "msg_mixed",
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [
-                        {"type": "text", "text": text},
-                        {
-                            "type": "tool_use",
-                            "id": "tool_call_mixed",
-                            "name": tool_name,
-                            "input": tool_input
-                        }
-                    ],
-                    "model": "claude-3-opus-20240229",
-                    "stop_reason": "tool_use",
-                    "usage": {"input_tokens": 15, "output_tokens": 35}
-                })),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "msg_mixed",
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": text},
+                    {
+                        "type": "tool_use",
+                        "id": "tool_call_mixed",
+                        "name": tool_name,
+                        "input": tool_input
+                    }
+                ],
+                "model": "claude-3-opus-20240229",
+                "stop_reason": "tool_use",
+                "usage": {"input_tokens": 15, "output_tokens": 35}
+            })))
             .mount(&self.server)
             .await;
     }

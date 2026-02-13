@@ -6,9 +6,7 @@ use serde_json::json;
 #[tokio::test]
 async fn test_api_simple_conversation() {
     let server = MockClaudeServer::start().await;
-    server
-        .mock_simple_response("Hello! I'm Claude.")
-        .await;
+    server.mock_simple_response("Hello! I'm Claude.").await;
 
     // Make a request to the mock server
     let response = ureq::post(&format!("{}/v1/messages", server.url()))
@@ -76,10 +74,7 @@ async fn test_api_tool_call_execution() {
 
     // Mock a tool call response
     server
-        .mock_tool_call(
-            "read_file",
-            json!({"path": "/tmp/example.txt"})
-        )
+        .mock_tool_call("read_file", json!({"path": "/tmp/example.txt"}))
         .await;
 
     let response = ureq::post(&format!("{}/v1/messages", server.url()))
@@ -118,10 +113,7 @@ async fn test_api_tool_result_sent() {
     // Test that tool results can be sent back in the conversation
     // First, mock a tool call
     server
-        .mock_tool_call(
-            "read_file",
-            json!({"path": "/tmp/test.txt"})
-        )
+        .mock_tool_call("read_file", json!({"path": "/tmp/test.txt"}))
         .await;
 
     let response = ureq::post(&format!("{}/v1/messages", server.url()))
@@ -153,7 +145,10 @@ async fn test_api_tool_result_sent() {
     // Verify the structure is correct
     assert_eq!(tool_result_message["role"], "user");
     assert_eq!(tool_result_message["content"][0]["type"], "tool_result");
-    assert_eq!(tool_result_message["content"][0]["tool_use_id"], tool_call_id);
+    assert_eq!(
+        tool_result_message["content"][0]["tool_use_id"],
+        tool_call_id
+    );
 }
 
 #[tokio::test]
@@ -290,7 +285,7 @@ async fn test_api_text_and_tool_call_mixed() {
         .mock_text_and_tool_call(
             "Let me check that file for you.",
             "read_file",
-            json!({"path": "/tmp/data.json"})
+            json!({"path": "/tmp/data.json"}),
         )
         .await;
 
@@ -308,7 +303,10 @@ async fn test_api_text_and_tool_call_mixed() {
     // Verify mixed content
     assert_eq!(body["content"].as_array().unwrap().len(), 2);
     assert_eq!(body["content"][0]["type"], "text");
-    assert_eq!(body["content"][0]["text"], "Let me check that file for you.");
+    assert_eq!(
+        body["content"][0]["text"],
+        "Let me check that file for you."
+    );
     assert_eq!(body["content"][1]["type"], "tool_use");
     assert_eq!(body["content"][1]["name"], "read_file");
 }

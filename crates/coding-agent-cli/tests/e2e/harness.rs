@@ -1,4 +1,4 @@
-use expectrl::{Session, Eof};
+use expectrl::{Eof, Session};
 use std::time::Duration;
 
 /// Test harness for CLI PTY-based interactive testing
@@ -37,7 +37,10 @@ impl CliTestSession {
     }
 
     /// Wait for and capture response
-    pub fn expect_response(&mut self, timeout: Duration) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn expect_response(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         self.session.set_expect_timeout(Some(timeout));
         let output = self.session.expect(">")?; // Wait for next prompt
         Ok(String::from_utf8_lossy(output.as_bytes()).to_string())

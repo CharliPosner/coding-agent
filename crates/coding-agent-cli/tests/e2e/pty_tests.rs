@@ -19,7 +19,9 @@ fn test_pty_startup_displays_logo() {
 fn test_pty_double_enter_submits() {
     let mut session = CliTestSession::spawn().expect("Failed to spawn CLI");
     session.expect_startup_screen().expect("Startup failed");
-    session.select_new_session().expect("Failed to select new session");
+    session
+        .select_new_session()
+        .expect("Failed to select new session");
 
     // Send text with single enter
     send_text(session.session_mut(), "First line").expect("Failed to send text");
@@ -34,7 +36,10 @@ fn test_pty_double_enter_submits() {
 
     // Should get a response now
     let result = wait_for_prompt(session.session_mut(), Duration::from_secs(10));
-    assert!(result.is_ok(), "Should have gotten prompt after double-enter");
+    assert!(
+        result.is_ok(),
+        "Should have gotten prompt after double-enter"
+    );
 }
 
 /// Test: Ctrl+C clears current input
@@ -43,7 +48,9 @@ fn test_pty_double_enter_submits() {
 fn test_pty_ctrl_c_cancels() {
     let mut session = CliTestSession::spawn().expect("Failed to spawn CLI");
     session.expect_startup_screen().expect("Startup failed");
-    session.select_new_session().expect("Failed to select new session");
+    session
+        .select_new_session()
+        .expect("Failed to select new session");
 
     // Type some text
     send_text(session.session_mut(), "Some text to cancel").expect("Failed to send text");
@@ -62,7 +69,9 @@ fn test_pty_ctrl_c_cancels() {
 fn test_pty_ctrl_d_exits() {
     let mut session = CliTestSession::spawn().expect("Failed to spawn CLI");
     session.expect_startup_screen().expect("Startup failed");
-    session.select_new_session().expect("Failed to select new session");
+    session
+        .select_new_session()
+        .expect("Failed to select new session");
 
     // Send Ctrl+D to exit
     session.send_ctrl_d().expect("Failed to send Ctrl+D");
@@ -88,7 +97,10 @@ fn test_pty_raw_mode_cleanup() {
         .output()
         .expect("Failed to run tty command");
 
-    assert!(output.status.success(), "Terminal should be in a valid state after CLI exit");
+    assert!(
+        output.status.success(),
+        "Terminal should be in a valid state after CLI exit"
+    );
 }
 
 /// Test: Unicode rendering (emoji and CJK)
@@ -97,7 +109,9 @@ fn test_pty_raw_mode_cleanup() {
 fn test_pty_unicode_rendering() {
     let mut session = CliTestSession::spawn().expect("Failed to spawn CLI");
     session.expect_startup_screen().expect("Startup failed");
-    session.select_new_session().expect("Failed to select new session");
+    session
+        .select_new_session()
+        .expect("Failed to select new session");
 
     // Send unicode text
     let unicode_text = "Hello 👋 世界 🚀";
@@ -116,7 +130,9 @@ fn test_pty_unicode_rendering() {
 fn test_pty_long_output_scrolls() {
     let mut session = CliTestSession::spawn().expect("Failed to spawn CLI");
     session.expect_startup_screen().expect("Startup failed");
-    session.select_new_session().expect("Failed to select new session");
+    session
+        .select_new_session()
+        .expect("Failed to select new session");
 
     // Run /help which should produce long output
     let result = session.run_command("/help");
@@ -126,8 +142,10 @@ fn test_pty_long_output_scrolls() {
 
     // Output should contain help text
     let output = result.unwrap();
-    assert!(contains_pattern(&output, "help") || contains_pattern(&output, "command"),
-            "Help output should contain relevant text");
+    assert!(
+        contains_pattern(&output, "help") || contains_pattern(&output, "command"),
+        "Help output should contain relevant text"
+    );
 }
 
 /// Test: Terminal resize handling

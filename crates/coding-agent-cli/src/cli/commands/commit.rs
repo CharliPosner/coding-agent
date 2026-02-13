@@ -81,7 +81,12 @@ impl Command for CommitCommand {
         }
 
         // Auto-commit mode: stage and commit changes
-        execute_auto_commit(&repo, &status, options.stage_all, options.message.as_deref())
+        execute_auto_commit(
+            &repo,
+            &status,
+            options.stage_all,
+            options.message.as_deref(),
+        )
     }
 }
 
@@ -579,8 +584,10 @@ struct ChangeAnalysis {
 impl ChangeAnalysis {
     fn analyze(files: &[&crate::integrations::git::FileStatus]) -> Self {
         let mut analysis = Self::default();
-        let mut directories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        let mut component_candidates: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut directories: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        let mut component_candidates: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
 
         for file in files {
             let path_str = file.path.to_string_lossy().to_string();
@@ -592,7 +599,10 @@ impl ChangeAnalysis {
             if path_str.contains("src/") || path_str.ends_with(".rs") {
                 analysis.has_src = true;
             }
-            if path_str.contains("config") || path_str.ends_with(".toml") || path_str.ends_with(".json") {
+            if path_str.contains("config")
+                || path_str.ends_with(".toml")
+                || path_str.ends_with(".json")
+            {
                 analysis.has_config = true;
             }
             if path_str.ends_with(".md") || path_str.contains("docs/") {
@@ -616,7 +626,8 @@ impl ChangeAnalysis {
 
             // Extract component name from file
             if let Some(stem) = file.path.file_stem() {
-                let name = stem.to_string_lossy()
+                let name = stem
+                    .to_string_lossy()
                     .trim_end_matches("_test")
                     .trim_start_matches("test_")
                     .to_string();
@@ -630,7 +641,9 @@ impl ChangeAnalysis {
                 FileStatusKind::Added | FileStatusKind::Untracked => {
                     analysis.new_files.push(path_str);
                 }
-                FileStatusKind::Modified | FileStatusKind::Staged | FileStatusKind::StagedWithChanges => {
+                FileStatusKind::Modified
+                | FileStatusKind::Staged
+                | FileStatusKind::StagedWithChanges => {
                     analysis.modified_files.push(path_str);
                 }
                 FileStatusKind::Deleted => {
@@ -641,15 +654,16 @@ impl ChangeAnalysis {
         }
 
         // Find primary directory (most files)
-        analysis.primary_dir = directories
-            .into_iter()
-            .max_by_key(|(_, count)| *count)
-            .map(|(dir, _)| {
-                std::path::Path::new(&dir)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or(dir)
-            });
+        analysis.primary_dir =
+            directories
+                .into_iter()
+                .max_by_key(|(_, count)| *count)
+                .map(|(dir, _)| {
+                    std::path::Path::new(&dir)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or(dir)
+                });
 
         // Find most common component name
         analysis.component_name = component_candidates
@@ -662,9 +676,15 @@ impl ChangeAnalysis {
 
     /// Determine the primary action verb
     fn action_verb(&self) -> &'static str {
-        if !self.new_files.is_empty() && self.modified_files.is_empty() && self.deleted_files.is_empty() {
+        if !self.new_files.is_empty()
+            && self.modified_files.is_empty()
+            && self.deleted_files.is_empty()
+        {
             "Add"
-        } else if !self.deleted_files.is_empty() && self.new_files.is_empty() && self.modified_files.is_empty() {
+        } else if !self.deleted_files.is_empty()
+            && self.new_files.is_empty()
+            && self.modified_files.is_empty()
+        {
             "Remove"
         } else if !self.deleted_files.is_empty() && !self.new_files.is_empty() {
             "Refactor"
@@ -833,7 +853,6 @@ fn generate_commit_message(
     format!("{}\n\n{}\n{}", title, purpose, implementation)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -958,11 +977,16 @@ mod tests {
         let message = generate_commit_message(&file_refs, &status);
 
         // Should have a title and body separated by blank line
-        assert!(message.contains("\n\n"), "Message should have blank line: {}", message);
+        assert!(
+            message.contains("\n\n"),
+            "Message should have blank line: {}",
+            message
+        );
         // Should mention the file modification
         assert!(
             message.contains("modifies") || message.contains("file"),
-            "Message should mention file changes: {}", message
+            "Message should mention file changes: {}",
+            message
         );
     }
 
@@ -1019,22 +1043,33 @@ mod tests {
             let file_path = temp_dir.path().join("initial.txt");
             fs::write(&file_path, "initial").map_err(|e| format!("Failed to write file: {}", e))?;
 
-            let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
+            let mut index = repo
+                .index()
+                .map_err(|e| format!("Failed to get index: {}", e))?;
             index
                 .add_path(Path::new("initial.txt"))
                 .map_err(|e| format!("Failed to add file: {}", e))?;
-            index.write().map_err(|e| format!("Failed to write index: {}", e))?;
+            index
+                .write()
+                .map_err(|e| format!("Failed to write index: {}", e))?;
 
-            let tree_id = index.write_tree().map_err(|e| format!("Failed to write tree: {}", e))?;
-            let tree = repo.find_tree(tree_id).map_err(|e| format!("Failed to find tree: {}", e))?;
-            let sig = repo.signature().map_err(|e| format!("Failed to get signature: {}", e))?;
+            let tree_id = index
+                .write_tree()
+                .map_err(|e| format!("Failed to write tree: {}", e))?;
+            let tree = repo
+                .find_tree(tree_id)
+                .map_err(|e| format!("Failed to find tree: {}", e))?;
+            let sig = repo
+                .signature()
+                .map_err(|e| format!("Failed to get signature: {}", e))?;
 
             repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
                 .map_err(|e| format!("Failed to commit: {}", e))?;
 
             // Create a new file to commit
             let new_file = temp_dir.path().join("new_file.txt");
-            fs::write(&new_file, "new content").map_err(|e| format!("Failed to write file: {}", e))?;
+            fs::write(&new_file, "new content")
+                .map_err(|e| format!("Failed to write file: {}", e))?;
 
             // Change to the temp directory and run commit
             std::env::set_current_dir(temp_dir.path())
@@ -1071,8 +1106,12 @@ mod tests {
             }
 
             // Verify commit was created
-            let head = repo.head().map_err(|e| format!("Failed to get HEAD: {}", e))?;
-            let commit = head.peel_to_commit().map_err(|e| format!("Failed to get commit: {}", e))?;
+            let head = repo
+                .head()
+                .map_err(|e| format!("Failed to get HEAD: {}", e))?;
+            let commit = head
+                .peel_to_commit()
+                .map_err(|e| format!("Failed to get commit: {}", e))?;
             if commit.message().unwrap() != "Add new file" {
                 return Err(format!("Wrong commit message: {:?}", commit.message()));
             }
@@ -1101,15 +1140,25 @@ mod tests {
             let file_path = temp_dir.path().join("test.txt");
             fs::write(&file_path, "content").map_err(|e| format!("Failed to write file: {}", e))?;
 
-            let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
+            let mut index = repo
+                .index()
+                .map_err(|e| format!("Failed to get index: {}", e))?;
             index
                 .add_path(Path::new("test.txt"))
                 .map_err(|e| format!("Failed to add file: {}", e))?;
-            index.write().map_err(|e| format!("Failed to write index: {}", e))?;
+            index
+                .write()
+                .map_err(|e| format!("Failed to write index: {}", e))?;
 
-            let tree_id = index.write_tree().map_err(|e| format!("Failed to write tree: {}", e))?;
-            let tree = repo.find_tree(tree_id).map_err(|e| format!("Failed to find tree: {}", e))?;
-            let sig = repo.signature().map_err(|e| format!("Failed to get signature: {}", e))?;
+            let tree_id = index
+                .write_tree()
+                .map_err(|e| format!("Failed to write tree: {}", e))?;
+            let tree = repo
+                .find_tree(tree_id)
+                .map_err(|e| format!("Failed to find tree: {}", e))?;
+            let sig = repo
+                .signature()
+                .map_err(|e| format!("Failed to get signature: {}", e))?;
 
             repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
                 .map_err(|e| format!("Failed to commit: {}", e))?;
@@ -1138,8 +1187,12 @@ mod tests {
                 CommandResult::Output(output) => {
                     if !output.to_lowercase().contains("nothing to commit")
                         && !output.to_lowercase().contains("no changes")
-                        && !output.to_lowercase().contains("clean") {
-                        return Err(format!("Expected 'nothing to commit' message, got: {}", output));
+                        && !output.to_lowercase().contains("clean")
+                    {
+                        return Err(format!(
+                            "Expected 'nothing to commit' message, got: {}",
+                            output
+                        ));
                     }
                 }
                 _ => return Err("Expected Output result for clean working tree".to_string()),
@@ -1161,7 +1214,8 @@ mod tests {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
-            let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+            let temp_dir =
+                TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
             // Change to the temp directory (not a git repo)
             std::env::set_current_dir(temp_dir.path())
@@ -1225,7 +1279,11 @@ mod tests {
         let parts: Vec<&str> = message.split("\n\n").collect();
 
         // Should have title and body separated by blank line
-        assert_eq!(parts.len(), 2, "Message should have title and body separated by blank line");
+        assert_eq!(
+            parts.len(),
+            2,
+            "Message should have title and body separated by blank line"
+        );
 
         // Title should not be empty
         let title = parts[0];
@@ -1259,7 +1317,11 @@ mod tests {
             || title.starts_with("Update")
             || title.starts_with("Remove")
             || title.starts_with("Refactor");
-        assert!(starts_with_verb, "Title should start with an action verb: {}", title);
+        assert!(
+            starts_with_verb,
+            "Title should start with an action verb: {}",
+            title
+        );
     }
 
     #[test]
@@ -1313,7 +1375,11 @@ mod tests {
             || message.contains("modifies")
             || message.contains("removes")
             || message.contains("file");
-        assert!(has_implementation, "Message should describe implementation: {}", message);
+        assert!(
+            has_implementation,
+            "Message should describe implementation: {}",
+            message
+        );
     }
 
     #[test]
@@ -1333,8 +1399,8 @@ mod tests {
         let message = generate_commit_message(&file_refs, &status);
 
         // Should recognize CLI-related changes
-        let recognizes_cli = message.to_lowercase().contains("command")
-            || message.to_lowercase().contains("cli");
+        let recognizes_cli =
+            message.to_lowercase().contains("command") || message.to_lowercase().contains("cli");
         assert!(recognizes_cli, "Should recognize CLI changes: {}", message);
     }
 
@@ -1356,7 +1422,11 @@ mod tests {
 
         // Should recognize test files
         let recognizes_tests = message.to_lowercase().contains("test");
-        assert!(recognizes_tests, "Should recognize test changes: {}", message);
+        assert!(
+            recognizes_tests,
+            "Should recognize test changes: {}",
+            message
+        );
     }
 
     #[test]
@@ -1376,7 +1446,11 @@ mod tests {
         let message = generate_commit_message(&file_refs, &status);
 
         // Should use Remove verb for deletions
-        assert!(message.starts_with("Remove"), "Delete should use 'Remove' verb: {}", message);
+        assert!(
+            message.starts_with("Remove"),
+            "Delete should use 'Remove' verb: {}",
+            message
+        );
     }
 
     #[test]
@@ -1406,11 +1480,18 @@ mod tests {
         let message = generate_commit_message(&file_refs, &status);
 
         // Should use Refactor for mixed add+delete
-        assert!(message.starts_with("Refactor"), "Mixed changes should use 'Refactor': {}", message);
+        assert!(
+            message.starts_with("Refactor"),
+            "Mixed changes should use 'Refactor': {}",
+            message
+        );
 
         // Implementation sentence should mention all types
-        assert!(message.contains("adds") && message.contains("removes"),
-            "Should mention both adds and removes: {}", message);
+        assert!(
+            message.contains("adds") && message.contains("removes"),
+            "Should mention both adds and removes: {}",
+            message
+        );
     }
 
     #[test]
@@ -1436,11 +1517,16 @@ mod tests {
 
         let message = generate_commit_message(&file_refs, &status);
         // The message should be an Update since we're modifying files
-        assert!(message.starts_with("Update"), "Should start with Update: {}", message);
+        assert!(
+            message.starts_with("Update"),
+            "Should start with Update: {}",
+            message
+        );
         // Should mention the file count in implementation sentence
         assert!(
             message.contains("2 existing files") || message.contains("auth"),
-            "Should reference changes: {}", message
+            "Should reference changes: {}",
+            message
         );
     }
 
@@ -1514,7 +1600,9 @@ mod tests {
             .map(|f| {
                 let selected = matches!(
                     f.status,
-                    FileStatusKind::Staged | FileStatusKind::StagedWithChanges | FileStatusKind::Added
+                    FileStatusKind::Staged
+                        | FileStatusKind::StagedWithChanges
+                        | FileStatusKind::Added
                 );
                 FileEntry {
                     path: f.path.to_string_lossy().to_string(),
@@ -1555,7 +1643,9 @@ mod tests {
         fs::write(&file_path, "content").expect("Failed to write file");
 
         let mut index = repo.index().expect("Failed to get index");
-        index.add_path(Path::new("test.txt")).expect("Failed to add file");
+        index
+            .add_path(Path::new("test.txt"))
+            .expect("Failed to add file");
         index.write().expect("Failed to write index");
 
         let tree_id = index.write_tree().expect("Failed to write tree");

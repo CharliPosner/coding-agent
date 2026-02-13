@@ -60,7 +60,10 @@ fn format_current_model() -> String {
     output.push_str(separator);
     output.push_str("\n\n");
     output.push_str(&format!("Model: {}\n", model));
-    output.push_str(&format!("Context window: {} tokens\n", format_context_window(model)));
+    output.push_str(&format!(
+        "Context window: {} tokens\n",
+        format_context_window(model)
+    ));
     output.push_str("\nAvailable models:\n");
     for available_model in available_models() {
         if available_model == model {
@@ -158,7 +161,7 @@ fn suggest_models(input: &str) -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::commands::{CommandRegistry, CommandContext};
+    use crate::cli::commands::{CommandContext, CommandRegistry};
     use crate::tokens::CostTracker;
 
     #[test]

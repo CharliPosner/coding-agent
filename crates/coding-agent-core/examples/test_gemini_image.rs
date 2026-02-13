@@ -79,8 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                 // Save to file
                                 let extension = if mime.contains("png") { "png" } else { "jpg" };
-                                let filename =
-                                    format!(".generated/test_image_{}.{}", i, extension);
+                                let filename = format!(".generated/test_image_{}.{}", i, extension);
 
                                 // Create directory if needed
                                 fs::create_dir_all(".generated")?;

@@ -15,19 +15,13 @@ pub fn expect_pattern(
 }
 
 /// Send text without newline
-pub fn send_text(
-    session: &mut Session,
-    text: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn send_text(session: &mut Session, text: &str) -> Result<(), Box<dyn std::error::Error>> {
     session.send(text)?;
     Ok(())
 }
 
 /// Send a single key
-pub fn send_key(
-    session: &mut Session,
-    key: char,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn send_key(session: &mut Session, key: char) -> Result<(), Box<dyn std::error::Error>> {
     session.send(&key.to_string())?;
     Ok(())
 }

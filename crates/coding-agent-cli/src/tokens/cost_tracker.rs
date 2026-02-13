@@ -85,12 +85,14 @@ impl CostTracker {
 
     /// Calculate cost for input tokens.
     pub fn input_cost(&self) -> f64 {
-        self.pricing.calculate_input_cost(self.input_tokens as usize)
+        self.pricing
+            .calculate_input_cost(self.input_tokens as usize)
     }
 
     /// Calculate cost for output tokens.
     pub fn output_cost(&self) -> f64 {
-        self.pricing.calculate_output_cost(self.output_tokens as usize)
+        self.pricing
+            .calculate_output_cost(self.output_tokens as usize)
     }
 
     /// Calculate total cost.
@@ -100,7 +102,8 @@ impl CostTracker {
 
     /// Get context usage as a percentage.
     pub fn context_percent(&self) -> f64 {
-        self.pricing.context_usage_percent(self.total_tokens() as usize)
+        self.pricing
+            .context_usage_percent(self.total_tokens() as usize)
     }
 
     /// Get the session duration as a human-readable string.

@@ -121,10 +121,8 @@ impl StatusBar {
 
     /// Formats the header line.
     fn format_header(&self) -> String {
-        self.theme.apply(
-            Color::Agent,
-            &format!("┌─ AGENTS {}", "─".repeat(60)),
-        )
+        self.theme
+            .apply(Color::Agent, &format!("┌─ AGENTS {}", "─".repeat(60)))
     }
 
     /// Formats a single agent status line.
@@ -171,11 +169,7 @@ impl StatusBar {
         let filled_blocks = (progress as usize * total_blocks) / 100;
         let empty_blocks = total_blocks - filled_blocks;
 
-        let bar = format!(
-            "{}{}",
-            "█".repeat(filled_blocks),
-            "░".repeat(empty_blocks)
-        );
+        let bar = format!("{}{}", "█".repeat(filled_blocks), "░".repeat(empty_blocks));
 
         self.theme.apply(Color::Success, &bar)
     }
@@ -319,7 +313,7 @@ mod tests {
 
         assert!(output.contains("done-agent"));
         assert!(output.contains("✓")); // Complete symbol
-        // Progress bar should not be shown for completed agents
+                                       // Progress bar should not be shown for completed agents
         let lines: Vec<&str> = output.lines().collect();
         let agent_line = lines
             .iter()
@@ -444,7 +438,7 @@ mod tests {
 
         assert!(output.contains("queued-agent"));
         assert!(output.contains("○")); // Queued symbol
-        // Queued agents should show progress bar (they are active)
+                                       // Queued agents should show progress bar (they are active)
         assert!(output.contains("░")); // Empty progress bar
     }
 }

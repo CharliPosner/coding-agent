@@ -12,6 +12,7 @@ pub mod tokens;
 pub mod tools;
 pub mod ui;
 
+pub use agents::{FixAgent, FixAgentConfig, FixAttempt, FixResult, FixStatus};
 pub use cli::{InputHandler, Repl, ReplConfig, Terminal};
 pub use config::{Config, PersistenceConfig};
 pub use integrations::{Session, SessionManager, SpecStoryError};
@@ -21,8 +22,7 @@ pub use permissions::{
 };
 pub use tokens::{ModelPricing, TokenCount, TokenCounter, TokenCounterError};
 pub use tools::{
-    create_tool_definitions, execute_tool, tool_definitions_to_api,
-    ErrorCategory, ToolError, ToolExecutionResult, ToolExecutor, ToolExecutorConfig,
+    create_tool_definitions, execute_tool, tool_definitions_to_api, ErrorCategory, ToolError,
+    ToolExecutionResult, ToolExecutor, ToolExecutorConfig,
 };
-pub use agents::{FixAgent, FixAgentConfig, FixAttempt, FixResult, FixStatus};
 pub use ui::ContextBar;

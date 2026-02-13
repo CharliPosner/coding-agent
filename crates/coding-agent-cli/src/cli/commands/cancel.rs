@@ -19,9 +19,7 @@ impl Command for CancelCommand {
         let agent_manager = match &ctx.agent_manager {
             Some(manager) => manager,
             None => {
-                return CommandResult::Output(
-                    "Agent manager not available.".to_string()
-                );
+                return CommandResult::Output("Agent manager not available.".to_string());
             }
         };
 
@@ -35,17 +33,19 @@ impl Command for CancelCommand {
         let agent_id = match parse_agent_id(args[0]) {
             Some(id) => id,
             None => {
-                return CommandResult::Output(
-                    format!("Invalid agent ID: {}\nUse /status to see active agents.", args[0])
-                );
+                return CommandResult::Output(format!(
+                    "Invalid agent ID: {}\nUse /status to see active agents.",
+                    args[0]
+                ));
             }
         };
 
         // Check if agent exists
         if agent_manager.get_status(agent_id).is_none() {
-            return CommandResult::Output(
-                format!("Agent {:?} not found. Use /status to see active agents.", agent_id)
-            );
+            return CommandResult::Output(format!(
+                "Agent {:?} not found. Use /status to see active agents.",
+                agent_id
+            ));
         }
 
         // Cancel the agent (this is synchronous, but the cancel operation uses async internally)
@@ -54,21 +54,17 @@ impl Command for CancelCommand {
         let cancel_result = std::thread::spawn(move || {
             // Create a new runtime in this thread
             let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                manager_clone.cancel(agent_id).await
-            })
-        }).join().unwrap();
+            rt.block_on(async { manager_clone.cancel(agent_id).await })
+        })
+        .join()
+        .unwrap();
 
         match cancel_result {
             Ok(()) => {
-                CommandResult::Output(
-                    format!("Successfully cancelled agent {:?}.", agent_id)
-                )
+                CommandResult::Output(format!("Successfully cancelled agent {:?}.", agent_id))
             }
             Err(e) => {
-                CommandResult::Output(
-                    format!("Failed to cancel agent {:?}: {}", agent_id, e)
-                )
+                CommandResult::Output(format!("Failed to cancel agent {:?}: {}", agent_id, e))
             }
         }
     }
@@ -96,9 +92,9 @@ fn parse_agent_id(s: &str) -> Option<AgentId> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agents::manager::AgentManager;
     use crate::cli::commands::CommandRegistry;
     use crate::tokens::CostTracker;
-    use crate::agents::manager::AgentManager;
     use std::sync::Arc;
     use std::time::Duration;
 

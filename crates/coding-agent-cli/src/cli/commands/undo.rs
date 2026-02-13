@@ -44,7 +44,9 @@ impl Command for UndoCommand {
 
         let repo_root = match git_repo.root() {
             Some(r) => r,
-            None => return CommandResult::Error("Could not determine repository root.".to_string()),
+            None => {
+                return CommandResult::Error("Could not determine repository root.".to_string())
+            }
         };
 
         let repo = match Repository::open(repo_root) {
@@ -98,9 +100,7 @@ fn undo_last_commit(repo: &Repository, hard: bool) -> CommandResult {
     let head = match repo.head() {
         Ok(h) => h,
         Err(_) => {
-            return CommandResult::Error(
-                "No commits to undo. Repository has no HEAD.".to_string(),
-            );
+            return CommandResult::Error("No commits to undo. Repository has no HEAD.".to_string());
         }
     };
 
@@ -256,20 +256,23 @@ fn revert_files(repo: &Repository, files: &[String], discard: bool) -> CommandRe
             let oid = tree_entry.id();
             let mode = tree_entry.filemode();
 
-            if let Err(e) = index.add_frombuffer(&git2::IndexEntry {
-                ctime: git2::IndexTime::new(0, 0),
-                mtime: git2::IndexTime::new(0, 0),
-                dev: 0,
-                ino: 0,
-                mode: mode as u32,
-                uid: 0,
-                gid: 0,
-                file_size: blob.size() as u32,
-                id: oid,
-                flags: 0,
-                flags_extended: 0,
-                path: path.as_os_str().as_encoded_bytes().to_vec(),
-            }, blob.content()) {
+            if let Err(e) = index.add_frombuffer(
+                &git2::IndexEntry {
+                    ctime: git2::IndexTime::new(0, 0),
+                    mtime: git2::IndexTime::new(0, 0),
+                    dev: 0,
+                    ino: 0,
+                    mode: mode as u32,
+                    uid: 0,
+                    gid: 0,
+                    file_size: blob.size() as u32,
+                    id: oid,
+                    flags: 0,
+                    flags_extended: 0,
+                    path: path.as_os_str().as_encoded_bytes().to_vec(),
+                },
+                blob.content(),
+            ) {
                 errors.push(format!("{}: Failed to reset index entry: {}", file_path, e));
                 continue;
             }
@@ -335,7 +338,13 @@ mod tests {
         (temp_dir, repo)
     }
 
-    fn create_commit(temp_dir: &TempDir, repo: &Repository, filename: &str, content: &str, message: &str) {
+    fn create_commit(
+        temp_dir: &TempDir,
+        repo: &Repository,
+        filename: &str,
+        content: &str,
+        message: &str,
+    ) {
         let file_path = temp_dir.path().join(filename);
         fs::write(&file_path, content).expect("Failed to write file");
 
@@ -367,7 +376,10 @@ mod tests {
     fn test_undo_command_description() {
         let cmd = UndoCommand;
         assert!(!cmd.description().is_empty());
-        assert!(cmd.description().to_lowercase().contains("undo") || cmd.description().to_lowercase().contains("revert"));
+        assert!(
+            cmd.description().to_lowercase().contains("undo")
+                || cmd.description().to_lowercase().contains("revert")
+        );
     }
 
     #[test]
@@ -427,8 +439,12 @@ mod tests {
                 .map_err(|e| format!("Failed to change dir: {}", e))?;
 
             // Count commits before undo
-            let mut revwalk = repo.revwalk().map_err(|e| format!("Failed to create revwalk: {}", e))?;
-            revwalk.push_head().map_err(|e| format!("Failed to push head: {}", e))?;
+            let mut revwalk = repo
+                .revwalk()
+                .map_err(|e| format!("Failed to create revwalk: {}", e))?;
+            revwalk
+                .push_head()
+                .map_err(|e| format!("Failed to push head: {}", e))?;
             let commits_before = revwalk.count();
 
             let cmd = UndoCommand;
@@ -456,7 +472,10 @@ mod tests {
                         return Err(format!("Expected 'soft' reset, got: {}", output));
                     }
                     if !output.contains("Second commit") {
-                        return Err(format!("Expected 'Second commit' in message, got: {}", output));
+                        return Err(format!(
+                            "Expected 'Second commit' in message, got: {}",
+                            output
+                        ));
                     }
                 }
                 CommandResult::Error(e) => return Err(format!("Got error: {}", e)),
@@ -464,12 +483,20 @@ mod tests {
             }
 
             // Verify commit was undone
-            let mut revwalk = repo.revwalk().map_err(|e| format!("Failed to create revwalk: {}", e))?;
-            revwalk.push_head().map_err(|e| format!("Failed to push head: {}", e))?;
+            let mut revwalk = repo
+                .revwalk()
+                .map_err(|e| format!("Failed to create revwalk: {}", e))?;
+            revwalk
+                .push_head()
+                .map_err(|e| format!("Failed to push head: {}", e))?;
             let commits_after = revwalk.count();
 
             if commits_after != commits_before - 1 {
-                return Err(format!("Expected {} commits, got {}", commits_before - 1, commits_after));
+                return Err(format!(
+                    "Expected {} commits, got {}",
+                    commits_before - 1,
+                    commits_after
+                ));
             }
 
             Ok(())
@@ -643,7 +670,8 @@ mod tests {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
-            let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
+            let temp_dir =
+                TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
             // Change to temp directory (not a git repo)
             std::env::set_current_dir(temp_dir.path())
@@ -692,11 +720,18 @@ mod tests {
             let (temp_dir, repo) = init_test_repo();
 
             // Create initial commit
-            create_commit(&temp_dir, &repo, "test.txt", "original content", "Initial commit");
+            create_commit(
+                &temp_dir,
+                &repo,
+                "test.txt",
+                "original content",
+                "Initial commit",
+            );
 
             // Modify the file
             let file_path = temp_dir.path().join("test.txt");
-            fs::write(&file_path, "modified content").map_err(|e| format!("Failed to write: {}", e))?;
+            fs::write(&file_path, "modified content")
+                .map_err(|e| format!("Failed to write: {}", e))?;
 
             // Change to temp directory
             std::env::set_current_dir(temp_dir.path())

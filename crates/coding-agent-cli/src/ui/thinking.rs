@@ -178,8 +178,7 @@ mod tests {
 
     #[test]
     fn test_rotation_interval_customization() {
-        let thinking = ThinkingMessages::new()
-            .with_rotation_interval(Duration::from_secs(5));
+        let thinking = ThinkingMessages::new().with_rotation_interval(Duration::from_secs(5));
 
         // Verify interval is set (can't directly test private field, but we can test behavior)
         assert_eq!(thinking.current(), "Pondering...");

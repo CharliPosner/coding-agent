@@ -68,7 +68,8 @@ impl FixApplicationResult {
     /// Rollback the applied fix by restoring original content.
     pub fn rollback(&self) -> Result<(), String> {
         for (path, content) in &self.original_content {
-            fs::write(path, content).map_err(|e| format!("Failed to rollback {}: {}", path.display(), e))?;
+            fs::write(path, content)
+                .map_err(|e| format!("Failed to rollback {}: {}", path.display(), e))?;
         }
         Ok(())
     }
@@ -163,13 +164,17 @@ fn apply_cargo_dependency(
 ) -> FixApplicationResult {
     let original_content = match fs::read_to_string(manifest_path) {
         Ok(content) => content,
-        Err(e) => return FixApplicationResult::failure(format!("Failed to read Cargo.toml: {}", e)),
+        Err(e) => {
+            return FixApplicationResult::failure(format!("Failed to read Cargo.toml: {}", e))
+        }
     };
 
     // Parse the TOML
     let mut doc = match original_content.parse::<toml_edit::DocumentMut>() {
         Ok(doc) => doc,
-        Err(e) => return FixApplicationResult::failure(format!("Failed to parse Cargo.toml: {}", e)),
+        Err(e) => {
+            return FixApplicationResult::failure(format!("Failed to parse Cargo.toml: {}", e))
+        }
     };
 
     // Check if dependencies section exists
@@ -183,7 +188,10 @@ fn apply_cargo_dependency(
         .map(|t| t.contains_key(dep_name))
         .unwrap_or(false)
     {
-        return FixApplicationResult::failure(format!("Dependency '{}' already exists in Cargo.toml", dep_name));
+        return FixApplicationResult::failure(format!(
+            "Dependency '{}' already exists in Cargo.toml",
+            dep_name
+        ));
     }
 
     // Normalize the crate name (replace underscores with hyphens for common crates)
@@ -234,13 +242,17 @@ fn apply_npm_dependency(
 ) -> FixApplicationResult {
     let original_content = match fs::read_to_string(package_json_path) {
         Ok(content) => content,
-        Err(e) => return FixApplicationResult::failure(format!("Failed to read package.json: {}", e)),
+        Err(e) => {
+            return FixApplicationResult::failure(format!("Failed to read package.json: {}", e))
+        }
     };
 
     // Parse the JSON
     let mut package: serde_json::Value = match serde_json::from_str(&original_content) {
         Ok(v) => v,
-        Err(e) => return FixApplicationResult::failure(format!("Failed to parse package.json: {}", e)),
+        Err(e) => {
+            return FixApplicationResult::failure(format!("Failed to parse package.json: {}", e))
+        }
     };
 
     // Ensure dependencies object exists
@@ -262,7 +274,12 @@ fn apply_npm_dependency(
     // Serialize back to JSON with pretty printing
     let new_content = match serde_json::to_string_pretty(&package) {
         Ok(s) => s,
-        Err(e) => return FixApplicationResult::failure(format!("Failed to serialize package.json: {}", e)),
+        Err(e) => {
+            return FixApplicationResult::failure(format!(
+                "Failed to serialize package.json: {}",
+                e
+            ))
+        }
     };
 
     if config.dry_run {
@@ -310,17 +327,26 @@ fn apply_add_import_fix(fix_info: &FixInfo, config: &AutoFixConfig) -> FixApplic
     };
 
     if !target_file.exists() {
-        return FixApplicationResult::failure(format!("Target file does not exist: {}", target_file.display()));
+        return FixApplicationResult::failure(format!(
+            "Target file does not exist: {}",
+            target_file.display()
+        ));
     }
 
     // Determine the file type and apply appropriate import
-    let extension = target_file.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let extension = target_file
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
 
     match extension {
         "rs" => apply_rust_import(&target_file, &item_name, config),
         "ts" | "tsx" | "js" | "jsx" => apply_js_import(&target_file, &item_name, config),
         "go" => apply_go_import(&target_file, &item_name, config),
-        _ => FixApplicationResult::failure(format!("Unsupported file type for import fix: {}", extension)),
+        _ => FixApplicationResult::failure(format!(
+            "Unsupported file type for import fix: {}",
+            extension
+        )),
     }
 }
 
@@ -332,7 +358,13 @@ fn apply_rust_import(
 ) -> FixApplicationResult {
     let original_content = match fs::read_to_string(file_path) {
         Ok(content) => content,
-        Err(e) => return FixApplicationResult::failure(format!("Failed to read {}: {}", file_path.display(), e)),
+        Err(e) => {
+            return FixApplicationResult::failure(format!(
+                "Failed to read {}: {}",
+                file_path.display(),
+                e
+            ))
+        }
     };
 
     // Try to find the right import path for common items
@@ -365,7 +397,11 @@ fn apply_rust_import(
 
     // Write the modified content
     if let Err(e) = fs::write(file_path, &new_content) {
-        return FixApplicationResult::failure(format!("Failed to write {}: {}", file_path.display(), e));
+        return FixApplicationResult::failure(format!(
+            "Failed to write {}: {}",
+            file_path.display(),
+            e
+        ));
     }
 
     let mut original_content_map = HashMap::new();
@@ -507,7 +543,13 @@ fn apply_js_import(
 ) -> FixApplicationResult {
     let original_content = match fs::read_to_string(file_path) {
         Ok(content) => content,
-        Err(e) => return FixApplicationResult::failure(format!("Failed to read {}: {}", file_path.display(), e)),
+        Err(e) => {
+            return FixApplicationResult::failure(format!(
+                "Failed to read {}: {}",
+                file_path.display(),
+                e
+            ))
+        }
     };
 
     // For JS/TS, we can't easily determine the source module without more context
@@ -516,7 +558,10 @@ fn apply_js_import(
 
     // Check if a similar comment already exists
     if original_content.contains(&format!("import for '{}'", item_name)) {
-        return FixApplicationResult::failure(format!("Import marker for '{}' already exists", item_name));
+        return FixApplicationResult::failure(format!(
+            "Import marker for '{}' already exists",
+            item_name
+        ));
     }
 
     let new_content = format!("{}{}", import_statement, original_content);
@@ -530,7 +575,10 @@ fn apply_js_import(
 
     // Create backup if configured
     if config.create_backups {
-        let backup_ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("bak");
+        let backup_ext = file_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("bak");
         let backup_path = file_path.with_extension(format!("{}.bak", backup_ext));
         if let Err(e) = fs::write(&backup_path, &original_content) {
             return FixApplicationResult::failure(format!("Failed to create backup: {}", e));
@@ -539,7 +587,11 @@ fn apply_js_import(
 
     // Write the modified content
     if let Err(e) = fs::write(file_path, &new_content) {
-        return FixApplicationResult::failure(format!("Failed to write {}: {}", file_path.display(), e));
+        return FixApplicationResult::failure(format!(
+            "Failed to write {}: {}",
+            file_path.display(),
+            e
+        ));
     }
 
     let mut original_content_map = HashMap::new();
@@ -560,7 +612,13 @@ fn apply_go_import(
 ) -> FixApplicationResult {
     let original_content = match fs::read_to_string(file_path) {
         Ok(content) => content,
-        Err(e) => return FixApplicationResult::failure(format!("Failed to read {}: {}", file_path.display(), e)),
+        Err(e) => {
+            return FixApplicationResult::failure(format!(
+                "Failed to read {}: {}",
+                file_path.display(),
+                e
+            ))
+        }
     };
 
     // For Go, we can guess some common packages
@@ -590,7 +648,11 @@ fn apply_go_import(
 
     // Write the modified content
     if let Err(e) = fs::write(file_path, &new_content) {
-        return FixApplicationResult::failure(format!("Failed to write {}: {}", file_path.display(), e));
+        return FixApplicationResult::failure(format!(
+            "Failed to write {}: {}",
+            file_path.display(),
+            e
+        ));
     }
 
     let mut original_content_map = HashMap::new();
@@ -1128,10 +1190,7 @@ fn main() {}
 
     #[test]
     fn test_fix_application_result_success() {
-        let result = FixApplicationResult::success(
-            vec![PathBuf::from("test.rs")],
-            "Added import",
-        );
+        let result = FixApplicationResult::success(vec![PathBuf::from("test.rs")], "Added import");
 
         assert!(result.success);
         assert_eq!(result.modified_files.len(), 1);
@@ -1188,7 +1247,10 @@ fn main() {}
 
         // Verify the dependency was added
         let content = fs::read_to_string(&package_json).unwrap();
-        assert!(content.contains("lodash"), "package.json should contain lodash");
+        assert!(
+            content.contains("lodash"),
+            "package.json should contain lodash"
+        );
     }
 
     #[test]

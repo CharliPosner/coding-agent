@@ -76,7 +76,8 @@ impl ToolResultFormatter {
         // Add header
         result.push_str(&format!(
             "  {}\r\n",
-            self.theme.apply(Color::Muted, &format!("({} lines)", total_lines))
+            self.theme
+                .apply(Color::Muted, &format!("({} lines)", total_lines))
         ));
 
         // Determine if we need to truncate
@@ -107,7 +108,10 @@ impl ToolResultFormatter {
                 "  {}\r\n",
                 self.theme.apply(
                     Color::Muted,
-                    &format!("... ({} more lines)", total_lines - self.config.max_display_lines)
+                    &format!(
+                        "... ({} more lines)",
+                        total_lines - self.config.max_display_lines
+                    )
                 )
             ));
         }
@@ -123,7 +127,11 @@ impl ToolResultFormatter {
     /// Format edit result
     fn format_edit_result(&self, output: &str) -> String {
         if output == "OK" {
-            format!("  {}\r\n", self.theme.apply(Color::Success, "Edit applied successfully"))
+            format!(
+                "  {}\r\n",
+                self.theme
+                    .apply(Color::Success, "Edit applied successfully")
+            )
         } else {
             format!("  {}\r\n", output)
         }
@@ -135,7 +143,8 @@ impl ToolResultFormatter {
             let mut result = String::new();
             result.push_str(&format!(
                 "  {}\r\n",
-                self.theme.apply(Color::Muted, &format!("({} items)", files.len()))
+                self.theme
+                    .apply(Color::Muted, &format!("({} items)", files.len()))
             ));
 
             let display_count = self.config.max_display_lines.min(files.len());
@@ -151,7 +160,10 @@ impl ToolResultFormatter {
             if files.len() > display_count {
                 result.push_str(&format!(
                     "  {}\r\n",
-                    self.theme.apply(Color::Muted, &format!("... ({} more)", files.len() - display_count))
+                    self.theme.apply(
+                        Color::Muted,
+                        &format!("... ({} more)", files.len() - display_count)
+                    )
                 ));
             }
 
@@ -175,7 +187,8 @@ impl ToolResultFormatter {
         if total_lines > 1 {
             result.push_str(&format!(
                 "  {}\r\n",
-                self.theme.apply(Color::Muted, &format!("({} lines)", total_lines))
+                self.theme
+                    .apply(Color::Muted, &format!("({} lines)", total_lines))
             ));
         }
 
@@ -187,7 +200,10 @@ impl ToolResultFormatter {
         if total_lines > display_count {
             result.push_str(&format!(
                 "  {}\r\n",
-                self.theme.apply(Color::Muted, &format!("... ({} more lines)", total_lines - display_count))
+                self.theme.apply(
+                    Color::Muted,
+                    &format!("... ({} more lines)", total_lines - display_count)
+                )
             ));
         }
 
@@ -206,7 +222,8 @@ impl ToolResultFormatter {
         let mut result = String::new();
         result.push_str(&format!(
             "  {}\r\n",
-            self.theme.apply(Color::Muted, &format!("({} matches)", total_lines))
+            self.theme
+                .apply(Color::Muted, &format!("({} matches)", total_lines))
         ));
 
         let display_count = self.config.max_display_lines.min(total_lines);
@@ -229,7 +246,10 @@ impl ToolResultFormatter {
         if total_lines > display_count {
             result.push_str(&format!(
                 "  {}\r\n",
-                self.theme.apply(Color::Muted, &format!("... ({} more matches)", total_lines - display_count))
+                self.theme.apply(
+                    Color::Muted,
+                    &format!("... ({} more matches)", total_lines - display_count)
+                )
             ));
         }
 
@@ -251,7 +271,10 @@ impl ToolResultFormatter {
         if total_lines > display_count {
             result.push_str(&format!(
                 "  {}\r\n",
-                self.theme.apply(Color::Muted, &format!("... ({} more lines)", total_lines - display_count))
+                self.theme.apply(
+                    Color::Muted,
+                    &format!("... ({} more lines)", total_lines - display_count)
+                )
             ));
         }
 
@@ -261,7 +284,10 @@ impl ToolResultFormatter {
     /// Detect programming language from content (simple heuristics)
     fn detect_language(&self, content: &str) -> Option<&str> {
         // Check for common language markers
-        if content.contains("fn main()") || content.contains("impl ") || content.contains("pub struct") {
+        if content.contains("fn main()")
+            || content.contains("impl ")
+            || content.contains("pub struct")
+        {
             return Some("rs");
         }
         if content.contains("def ") || content.contains("import ") || content.contains("class ") {
@@ -312,7 +338,10 @@ mod tests {
         config.max_display_lines = 3;
         let formatter = ToolResultFormatter::with_config(config);
 
-        let content = (0..10).map(|i| format!("line {}", i)).collect::<Vec<_>>().join("\n");
+        let content = (0..10)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         let result = formatter.format_file_content(&content);
 
         assert!(result.contains("10 lines"));

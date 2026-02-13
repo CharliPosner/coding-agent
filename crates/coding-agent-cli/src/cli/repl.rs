@@ -10,9 +10,13 @@ use crate::config::Config;
 use crate::integrations::{Session, SessionManager};
 use crate::permissions::{PermissionChecker, TrustedPaths};
 use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
-use crate::tools::{create_tool_definitions, execute_tool_with_permissions, tool_definitions_to_api};
-use crate::ui::{ContextBar, ToolResultFormatter, ThinkingMessages, FunFactClient};
-use coding_agent_core::{ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition};
+use crate::tools::{
+    create_tool_definitions, execute_tool_with_permissions, tool_definitions_to_api,
+};
+use crate::ui::{ContextBar, FunFactClient, ThinkingMessages, ToolResultFormatter};
+use coding_agent_core::{
+    ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition,
+};
 use std::io::Write;
 use std::path::PathBuf;
 use std::thread;
@@ -145,9 +149,7 @@ impl Repl {
 
         // Initialize thinking messages and fun facts
         let thinking_messages = ThinkingMessages::new();
-        let fun_facts_enabled = app_config
-            .map(|cfg| cfg.behavior.fun_facts)
-            .unwrap_or(true);
+        let fun_facts_enabled = app_config.map(|cfg| cfg.behavior.fun_facts).unwrap_or(true);
         let fun_fact_delay = app_config
             .map(|cfg| cfg.behavior.fun_fact_delay)
             .unwrap_or(10);
@@ -248,9 +250,11 @@ impl Repl {
 
         // Also update the cost tracker with separate input/output tracking
         if role == "user" {
-            self.cost_tracker.add_input_tokens(token_count.tokens as u64);
+            self.cost_tracker
+                .add_input_tokens(token_count.tokens as u64);
         } else {
-            self.cost_tracker.add_output_tokens(token_count.tokens as u64);
+            self.cost_tracker
+                .add_output_tokens(token_count.tokens as u64);
         }
         self.cost_tracker.add_message();
     }
@@ -282,10 +286,9 @@ impl Repl {
 
     /// Call the Claude API with the current conversation
     fn call_claude(&self, messages: &[Message]) -> Result<MessageResponse, String> {
-        let api_key = self
-            .api_key
-            .as_ref()
-            .ok_or_else(|| "ANTHROPIC_API_KEY not set. Please set it in your environment or .env file.".to_string())?;
+        let api_key = self.api_key.as_ref().ok_or_else(|| {
+            "ANTHROPIC_API_KEY not set. Please set it in your environment or .env file.".to_string()
+        })?;
 
         let request = MessageRequest {
             model: "claude-sonnet-4-20250514".to_string(),
@@ -317,7 +320,10 @@ impl Repl {
         loop {
             iteration += 1;
             if iteration > MAX_TOOL_ITERATIONS {
-                return Err("Maximum tool iterations reached. Stopping to prevent infinite loop.".to_string());
+                return Err(
+                    "Maximum tool iterations reached. Stopping to prevent infinite loop."
+                        .to_string(),
+                );
             }
 
             // Show thinking indicator with potential fun fact during long waits
@@ -329,7 +335,9 @@ impl Repl {
 
             // Pre-fetch a fun fact if enabled
             let fun_fact = if self.fun_facts_enabled && self.fun_fact_client.is_some() {
-                self.fun_fact_client.as_mut().map(|client| client.get_fact())
+                self.fun_fact_client
+                    .as_mut()
+                    .map(|client| client.get_fact())
             } else {
                 None
             };
@@ -407,7 +415,8 @@ impl Repl {
             }
 
             // Add assistant response to conversation history
-            self.conversation.push(Message::assistant(response.content.clone()));
+            self.conversation
+                .push(Message::assistant(response.content.clone()));
 
             // Update token counts
             if !response_text.is_empty() {
@@ -424,7 +433,10 @@ impl Repl {
             let mut tool_results: Vec<ContentBlock> = Vec::new();
             for (id, name, input) in tool_uses {
                 // Display tool call visibility
-                self.print_line(&format!("\x1b[33m● {}\x1b[0m", self.format_tool_call(&name, &input)));
+                self.print_line(&format!(
+                    "\x1b[33m● {}\x1b[0m",
+                    self.format_tool_call(&name, &input)
+                ));
 
                 // Execute the tool with permission checking
                 let result = execute_tool_with_permissions(
@@ -1087,7 +1099,8 @@ mod tests {
     #[test]
     fn test_summarize_tool_result_bash_long() {
         let repl = Repl::new(ReplConfig::default());
-        let output = "This is a very long output line that exceeds sixty characters and should be truncated";
+        let output =
+            "This is a very long output line that exceeds sixty characters and should be truncated";
         let summary = repl.summarize_tool_result("bash", output);
         assert!(summary.ends_with("..."));
         assert!(summary.len() <= 63); // 60 chars + "..."

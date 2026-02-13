@@ -1,9 +1,9 @@
 //! Tests for fun fact display during long waits
 
-use coding_agent_cli::ui::{FunFact, FunFactCache, FunFactClient};
 use coding_agent_cli::ui::ThinkingMessages;
-use std::time::Duration;
+use coding_agent_cli::ui::{FunFact, FunFactCache, FunFactClient};
 use std::thread;
+use std::time::Duration;
 
 #[test]
 fn test_thinking_messages_rotation() {
@@ -105,7 +105,10 @@ fn test_fallback_facts_are_valid() {
     let fact = FunFactClient::get_fallback_fact();
 
     assert!(!fact.text.is_empty(), "Fallback fact should have text");
-    assert_eq!(fact.source, "curated", "Fallback facts should be marked as curated");
+    assert_eq!(
+        fact.source, "curated",
+        "Fallback facts should be marked as curated"
+    );
 }
 
 #[test]
@@ -131,8 +134,7 @@ fn test_fallback_facts_vary_over_time() {
 
 #[test]
 fn test_thinking_messages_with_custom_interval() {
-    let thinking = ThinkingMessages::new()
-        .with_rotation_interval(Duration::from_millis(50));
+    let thinking = ThinkingMessages::new().with_rotation_interval(Duration::from_millis(50));
 
     // Should still start with first message
     assert_eq!(thinking.current(), "Pondering...");
@@ -140,8 +142,7 @@ fn test_thinking_messages_with_custom_interval() {
 
 #[test]
 fn test_thinking_messages_tick_before_interval() {
-    let mut thinking = ThinkingMessages::new()
-        .with_rotation_interval(Duration::from_secs(10));
+    let mut thinking = ThinkingMessages::new().with_rotation_interval(Duration::from_secs(10));
 
     // Tick immediately - should not change
     let changed = thinking.tick();
@@ -151,8 +152,7 @@ fn test_thinking_messages_tick_before_interval() {
 
 #[test]
 fn test_thinking_messages_tick_after_interval() {
-    let mut thinking = ThinkingMessages::new()
-        .with_rotation_interval(Duration::from_millis(50));
+    let mut thinking = ThinkingMessages::new().with_rotation_interval(Duration::from_millis(50));
 
     // Wait for interval to pass
     thread::sleep(Duration::from_millis(60));
@@ -207,5 +207,8 @@ fn test_fun_fact_cache_fresh_facts_dont_need_refresh() {
     let mut cache = FunFactCache::with_settings(100, 3600);
     cache.add(FunFact::new("Fresh fact", "test"));
 
-    assert!(!cache.needs_refresh(), "Fresh facts should not need refresh");
+    assert!(
+        !cache.needs_refresh(),
+        "Fresh facts should not need refresh"
+    );
 }

@@ -26,7 +26,10 @@ impl std::fmt::Display for ObsidianError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ObsidianError::VaultNotConfigured => {
-                write!(f, "Obsidian vault path not configured. Please set it in your config file.")
+                write!(
+                    f,
+                    "Obsidian vault path not configured. Please set it in your config file."
+                )
             }
             ObsidianError::VaultNotFound(path) => {
                 write!(f, "Obsidian vault not found at: {}", path.display())

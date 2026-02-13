@@ -3,8 +3,8 @@
 //! This module defines all the tools that Claude can use to interact with the codebase.
 //! Each tool has a JSON schema for input validation and a function to execute the tool.
 
-use coding_agent_core::{generate_schema, Tool, ToolDefinition};
 use crate::permissions::{PermissionChecker, PermissionDecision};
+use coding_agent_core::{generate_schema, Tool, ToolDefinition};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
@@ -128,8 +128,7 @@ fn edit_file(input: Value) -> Result<String, String> {
                         .map_err(|e| format!("Failed to create directory: {}", e))?;
                 }
             }
-            fs::write(path, &input.new_str)
-                .map_err(|e| format!("Failed to create file: {}", e))?;
+            fs::write(path, &input.new_str).map_err(|e| format!("Failed to create file: {}", e))?;
             return Ok(format!("Successfully created file {}", input.path));
         } else {
             return Err(format!("file '{}' does not exist", input.path));
@@ -422,7 +421,11 @@ pub fn tool_definitions_to_api(definitions: &[ToolDefinition]) -> Vec<Tool> {
 }
 
 /// Execute a tool by name with the given input.
-pub fn execute_tool(definitions: &[ToolDefinition], name: &str, input: Value) -> Result<String, String> {
+pub fn execute_tool(
+    definitions: &[ToolDefinition],
+    name: &str,
+    input: Value,
+) -> Result<String, String> {
     for def in definitions {
         if def.name == name {
             return (def.function)(input);
@@ -462,12 +465,10 @@ pub fn execute_tool_with_permissions(
                 PermissionDecision::Denied => {
                     Err(format!("Permission denied: Cannot write to {}", path_str))
                 }
-                PermissionDecision::NeedsPrompt => {
-                    Err(format!(
-                        "Permission required: Writing to {} requires confirmation",
-                        path_str
-                    ))
-                }
+                PermissionDecision::NeedsPrompt => Err(format!(
+                    "Permission required: Writing to {} requires confirmation",
+                    path_str
+                )),
             }
         }
         "edit_file" => {
@@ -484,12 +485,10 @@ pub fn execute_tool_with_permissions(
                 PermissionDecision::Denied => {
                     Err(format!("Permission denied: Cannot edit {}", path_str))
                 }
-                PermissionDecision::NeedsPrompt => {
-                    Err(format!(
-                        "Permission required: Editing {} requires confirmation",
-                        path_str
-                    ))
-                }
+                PermissionDecision::NeedsPrompt => Err(format!(
+                    "Permission required: Editing {} requires confirmation",
+                    path_str
+                )),
             }
         }
         // Other tools don't require permission checks
@@ -979,7 +978,11 @@ mod tests {
         // Create a temp directory with some test files
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.rs");
-        fs::write(&file_path, "fn hello_world() {\n    println!(\"Hello\");\n}\n").unwrap();
+        fs::write(
+            &file_path,
+            "fn hello_world() {\n    println!(\"Hello\");\n}\n",
+        )
+        .unwrap();
 
         let input = json!({
             "pattern": "hello_world",
@@ -1105,7 +1108,11 @@ mod tests {
     fn test_code_search_multiple_matches_in_file() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.rs");
-        fs::write(&file_path, "TODO: first\nsome code\nTODO: second\nmore code\nTODO: third").unwrap();
+        fs::write(
+            &file_path,
+            "TODO: first\nsome code\nTODO: second\nmore code\nTODO: third",
+        )
+        .unwrap();
 
         let input = json!({
             "pattern": "TODO:",
@@ -1116,9 +1123,9 @@ mod tests {
         assert!(result.is_ok());
         let output = result.unwrap();
         // Should show line numbers
-        assert!(output.contains(":1:"));  // Line 1
-        assert!(output.contains(":3:"));  // Line 3
-        assert!(output.contains(":5:"));  // Line 5
+        assert!(output.contains(":1:")); // Line 1
+        assert!(output.contains(":3:")); // Line 3
+        assert!(output.contains(":5:")); // Line 5
     }
 
     #[test]
@@ -1184,9 +1191,7 @@ mod tests {
         let file_path = dir.path().join("test.txt");
 
         // Create a file with more than 50 matching lines
-        let content: String = (0..60)
-            .map(|i| format!("line {} MATCH_ME\n", i))
-            .collect();
+        let content: String = (0..60).map(|i| format!("line {} MATCH_ME\n", i)).collect();
         fs::write(&file_path, content).unwrap();
 
         let input = json!({
@@ -1241,7 +1246,8 @@ mod tests {
         });
 
         // Should succeed because path is trusted
-        let result = execute_tool_with_permissions(&definitions, "write_file", input, Some(&checker));
+        let result =
+            execute_tool_with_permissions(&definitions, "write_file", input, Some(&checker));
         assert!(result.is_ok());
         assert!(result.unwrap().contains("Successfully wrote"));
     }
@@ -1264,7 +1270,8 @@ mod tests {
         });
 
         // Should fail because path is not trusted
-        let result = execute_tool_with_permissions(&definitions, "write_file", input, Some(&checker));
+        let result =
+            execute_tool_with_permissions(&definitions, "write_file", input, Some(&checker));
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Permission required"));
     }
@@ -1290,7 +1297,8 @@ mod tests {
         });
 
         // Should succeed because path is trusted
-        let result = execute_tool_with_permissions(&definitions, "edit_file", input, Some(&checker));
+        let result =
+            execute_tool_with_permissions(&definitions, "edit_file", input, Some(&checker));
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "OK");
     }
@@ -1314,7 +1322,8 @@ mod tests {
         });
 
         // Should fail because path is not trusted
-        let result = execute_tool_with_permissions(&definitions, "edit_file", input, Some(&checker));
+        let result =
+            execute_tool_with_permissions(&definitions, "edit_file", input, Some(&checker));
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Permission required"));
     }
@@ -1337,7 +1346,8 @@ mod tests {
         });
 
         // Should succeed even with untrusted path (reads are always allowed)
-        let result = execute_tool_with_permissions(&definitions, "read_file", input, Some(&checker));
+        let result =
+            execute_tool_with_permissions(&definitions, "read_file", input, Some(&checker));
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "test content");
     }
@@ -1378,7 +1388,8 @@ mod tests {
         });
 
         // Should succeed (list_files doesn't require permission checks)
-        let result = execute_tool_with_permissions(&definitions, "list_files", input, Some(&checker));
+        let result =
+            execute_tool_with_permissions(&definitions, "list_files", input, Some(&checker));
         assert!(result.is_ok());
     }
 
@@ -1401,13 +1412,16 @@ mod tests {
         });
 
         // Should succeed (code_search doesn't require permission checks)
-        let result = execute_tool_with_permissions(&definitions, "code_search", input, Some(&checker));
+        let result =
+            execute_tool_with_permissions(&definitions, "code_search", input, Some(&checker));
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_write_file_permission_denied() {
-        use crate::permissions::{OperationType, PermissionChecker, PermissionDecision, TrustedPaths};
+        use crate::permissions::{
+            OperationType, PermissionChecker, PermissionDecision, TrustedPaths,
+        };
 
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.txt");
@@ -1426,7 +1440,8 @@ mod tests {
         });
 
         // Should fail with "Permission denied" (not "required")
-        let result = execute_tool_with_permissions(&definitions, "write_file", input, Some(&checker));
+        let result =
+            execute_tool_with_permissions(&definitions, "write_file", input, Some(&checker));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Permission denied"));
@@ -1435,7 +1450,9 @@ mod tests {
 
     #[test]
     fn test_edit_file_permission_denied() {
-        use crate::permissions::{OperationType, PermissionChecker, PermissionDecision, TrustedPaths};
+        use crate::permissions::{
+            OperationType, PermissionChecker, PermissionDecision, TrustedPaths,
+        };
 
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.txt");
@@ -1446,7 +1463,11 @@ mod tests {
         let mut checker = PermissionChecker::new(trusted, true);
 
         // Record a "denied" decision for this path
-        checker.record_decision(&file_path, OperationType::Modify, PermissionDecision::Denied);
+        checker.record_decision(
+            &file_path,
+            OperationType::Modify,
+            PermissionDecision::Denied,
+        );
 
         let definitions = create_tool_definitions();
         let input = json!({
@@ -1456,7 +1477,8 @@ mod tests {
         });
 
         // Should fail with "Permission denied" (not "required")
-        let result = execute_tool_with_permissions(&definitions, "edit_file", input, Some(&checker));
+        let result =
+            execute_tool_with_permissions(&definitions, "edit_file", input, Some(&checker));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Permission denied"));

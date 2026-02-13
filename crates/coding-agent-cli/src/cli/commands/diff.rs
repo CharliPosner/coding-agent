@@ -41,7 +41,9 @@ impl Command for DiffCommand {
 
         let repo_root = match git_repo.root() {
             Some(r) => r,
-            None => return CommandResult::Error("Could not determine repository root.".to_string()),
+            None => {
+                return CommandResult::Error("Could not determine repository root.".to_string())
+            }
         };
 
         let repo = match Repository::open(repo_root) {
@@ -56,9 +58,7 @@ impl Command for DiffCommand {
         };
 
         if status.is_clean() {
-            return CommandResult::Output(
-                "No changes. Working tree is clean.".to_string(),
-            );
+            return CommandResult::Output("No changes. Working tree is clean.".to_string());
         }
 
         // Build the diff output
@@ -227,7 +227,9 @@ fn get_unstaged_diff(repo: &Repository, files: &[String]) -> Result<String, Stri
 /// Format a git2 Diff into a readable string
 fn format_diff(diff: &git2::Diff) -> Result<String, String> {
     let mut output = String::new();
-    let stats = diff.stats().map_err(|e| format!("Failed to get diff stats: {}", e))?;
+    let stats = diff
+        .stats()
+        .map_err(|e| format!("Failed to get diff stats: {}", e))?;
 
     // If no changes, return empty
     if stats.files_changed() == 0 {

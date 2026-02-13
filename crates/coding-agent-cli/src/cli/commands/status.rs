@@ -31,11 +31,7 @@ impl Command for StatusCommand {
 
                     output.push_str(&format!(
                         "  {} [{:?}] {} - {} ({}%)\n",
-                        state_symbol,
-                        status.id,
-                        status.name,
-                        status.description,
-                        status.progress
+                        state_symbol, status.id, status.name, status.description, status.progress
                     ));
                 }
 

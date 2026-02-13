@@ -58,7 +58,9 @@ fn test_startup_screen_snapshot() {
 #[ignore]
 fn test_help_command_snapshot() {
     let mut session = CliTestSession::spawn().expect("Failed to spawn");
-    session.select_new_session().expect("Failed to select new session");
+    session
+        .select_new_session()
+        .expect("Failed to select new session");
 
     // Run /help command
     let output = session.run_command("/help").expect("Failed to run /help");
@@ -74,10 +76,14 @@ fn test_help_command_snapshot() {
 #[ignore]
 fn test_unknown_command_snapshot() {
     let mut session = CliTestSession::spawn().expect("Failed to spawn");
-    session.select_new_session().expect("Failed to select new session");
+    session
+        .select_new_session()
+        .expect("Failed to select new session");
 
     // Run unknown command
-    let output = session.run_command("/foobar").expect("Failed to run command");
+    let output = session
+        .run_command("/foobar")
+        .expect("Failed to run command");
     let clean_output = capture_without_ansi(&output);
 
     assert_snapshot!("unknown_command_error", clean_output);
@@ -181,7 +187,7 @@ fn test_error_message_formatting_snapshot() {
     // We can't easily capture println! output, so we'll test the theme application directly
     let error_msg = output.theme().apply(
         coding_agent_cli::ui::theme::Color::Error,
-        "File not found: /path/to/file.rs"
+        "File not found: /path/to/file.rs",
     );
     let clean_output = strip_ansi(&error_msg);
 
@@ -198,7 +204,7 @@ fn test_success_message_formatting_snapshot() {
 
     let success_msg = output.theme().apply(
         coding_agent_cli::ui::theme::Color::Success,
-        "File created successfully"
+        "File created successfully",
     );
     let clean_output = strip_ansi(&success_msg);
 
@@ -215,7 +221,7 @@ fn test_warning_message_formatting_snapshot() {
 
     let warning_msg = output.theme().apply(
         coding_agent_cli::ui::theme::Color::Warning,
-        "This operation may be slow"
+        "This operation may be slow",
     );
     let clean_output = strip_ansi(&warning_msg);
 

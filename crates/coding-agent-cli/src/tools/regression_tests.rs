@@ -383,7 +383,10 @@ fn generate_import_test(
         test_name,
         test_source,
         suggested_path,
-        format!("Ensures {} import is not removed from {}", item_name, file_path),
+        format!(
+            "Ensures {} import is not removed from {}",
+            item_name, file_path
+        ),
         FixType::AddImport,
     ))
 }
@@ -665,7 +668,13 @@ fn generate_test_name(prefix: &str, fix_info: &FixInfo) -> String {
     let suffix = match &fix_info.target_item {
         Some(item) => sanitize_name(item),
         None => match &fix_info.target_file {
-            Some(file) => sanitize_name(Path::new(file).file_stem().unwrap_or_default().to_str().unwrap_or("unknown")),
+            Some(file) => sanitize_name(
+                Path::new(file)
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_str()
+                    .unwrap_or("unknown"),
+            ),
             None => "unknown".to_string(),
         },
     };
@@ -713,7 +722,10 @@ pub fn write_regression_test(test: &RegressionTest, base_dir: &Path) -> Result<P
 
         // Check if this test already exists
         if existing.contains(&format!("fn {}()", test.name)) {
-            return Err(format!("Test {} already exists in {:?}", test.name, full_path));
+            return Err(format!(
+                "Test {} already exists in {:?}",
+                test.name, full_path
+            ));
         }
 
         format!("{}\n{}", existing, test.source)
@@ -724,8 +736,7 @@ pub fn write_regression_test(test: &RegressionTest, base_dir: &Path) -> Result<P
         )
     };
 
-    fs::write(&full_path, content)
-        .map_err(|e| format!("Failed to write test file: {}", e))?;
+    fs::write(&full_path, content).map_err(|e| format!("Failed to write test file: {}", e))?;
 
     Ok(full_path)
 }
@@ -740,7 +751,10 @@ mod tests {
         assert_eq!(sanitize_name("serde_json"), "serde_json");
         assert_eq!(sanitize_name("serde-json"), "serde_json");
         assert_eq!(sanitize_name("HashMap"), "hashmap");
-        assert_eq!(sanitize_name("std::collections::HashMap"), "std__collections__hashmap");
+        assert_eq!(
+            sanitize_name("std::collections::HashMap"),
+            "std__collections__hashmap"
+        );
     }
 
     #[test]
@@ -856,10 +870,8 @@ mod tests {
             suggested_change: "use std::sync::Arc".to_string(),
         };
 
-        let fix_result = FixApplicationResult::success(
-            vec![PathBuf::from("src/lib.rs")],
-            "Added Arc import",
-        );
+        let fix_result =
+            FixApplicationResult::success(vec![PathBuf::from("src/lib.rs")], "Added Arc import");
 
         let config = RegressionTestConfig::default();
         let test = generate_regression_test(&fix_info, &fix_result, &config);

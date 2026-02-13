@@ -138,9 +138,10 @@ impl CommitPreview {
         lines += 1;
 
         // Render files to be committed
-        let files_header = self
-            .theme
-            .apply(Color::Muted, &format!("Files to commit ({}):", self.files.len()));
+        let files_header = self.theme.apply(
+            Color::Muted,
+            &format!("Files to commit ({}):", self.files.len()),
+        );
         execute!(stdout, Print(format!("{}\n", files_header)))?;
         lines += 1;
 
@@ -291,7 +292,10 @@ mod tests {
         assert_eq!(a, b);
         assert_ne!(a, c);
         assert_eq!(CommitPreviewResult::Edit, CommitPreviewResult::Edit);
-        assert_eq!(CommitPreviewResult::Cancelled, CommitPreviewResult::Cancelled);
+        assert_eq!(
+            CommitPreviewResult::Cancelled,
+            CommitPreviewResult::Cancelled
+        );
         assert_ne!(CommitPreviewResult::Edit, CommitPreviewResult::Cancelled);
     }
 

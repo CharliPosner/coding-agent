@@ -184,9 +184,9 @@ mod tests {
             assert!(output.contains("Input:"));
             assert!(output.contains("Output:"));
             assert!(output.contains("Total:"));
-            assert!(output.contains("1,000"));  // Input tokens formatted
-            assert!(output.contains("500"));    // Output tokens
-            assert!(output.contains("1,500"));  // Total tokens
+            assert!(output.contains("1,000")); // Input tokens formatted
+            assert!(output.contains("500")); // Output tokens
+            assert!(output.contains("1,500")); // Total tokens
         } else {
             panic!("Expected CommandResult::Output");
         }

@@ -390,7 +390,10 @@ impl FixAgent {
                                 description: description.to_string(),
                                 modified_files,
                                 success: false,
-                                error_message: Some(format!("Verification failed: {}", verify_error)),
+                                error_message: Some(format!(
+                                    "Verification failed: {}",
+                                    verify_error
+                                )),
                                 duration: attempt_start.elapsed(),
                             };
                             self.attempts.push(attempt);
@@ -462,7 +465,11 @@ impl FixAgent {
         let fix_info = self.fix_info.as_ref()?;
         let fix_result = self.last_fix_result.as_ref()?;
 
-        crate::tools::generate_regression_test(fix_info, fix_result, &self.config.regression_test_config)
+        crate::tools::generate_regression_test(
+            fix_info,
+            fix_result,
+            &self.config.regression_test_config,
+        )
     }
 
     /// Build the final result.
@@ -523,7 +530,8 @@ fn extract_item_name_from_error(message: &str) -> Option<String> {
 fn extract_file_from_error(message: &str) -> Option<String> {
     // Look for patterns like "src/main.rs:10:5" or "in src/lib.rs"
     for word in message.split_whitespace() {
-        let cleaned = word.trim_matches(|c| c == ':' || c == ',' || c == '.' || c == ')' || c == '(');
+        let cleaned =
+            word.trim_matches(|c| c == ':' || c == ',' || c == '.' || c == ')' || c == '(');
         if cleaned.ends_with(".rs") || cleaned.ends_with(".go") || cleaned.ends_with(".ts") {
             return Some(cleaned.to_string());
         }

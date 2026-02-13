@@ -79,10 +79,7 @@ impl ToolError {
     /// Create a tool error with explicit category.
     pub fn with_category(message: impl Into<String>, category: ErrorCategory) -> Self {
         let message = message.into();
-        let retriable = matches!(
-            category,
-            ErrorCategory::Network { is_transient: true }
-        );
+        let retriable = matches!(category, ErrorCategory::Network { is_transient: true });
 
         Self {
             message,
@@ -429,8 +426,7 @@ fn categorize_error(message: &str) -> (ErrorCategory, bool, Option<String>) {
         );
     }
 
-    if lower.contains("dns") || lower.contains("name resolution") || lower.contains("getaddrinfo")
-    {
+    if lower.contains("dns") || lower.contains("name resolution") || lower.contains("getaddrinfo") {
         return (
             ErrorCategory::Network {
                 is_transient: false,
@@ -601,7 +597,8 @@ mod tests {
 
     #[test]
     fn test_error_categorization_type_error() {
-        let error = ToolError::new("error[E0308]: mismatched types: expected `&str`, found `String`");
+        let error =
+            ToolError::new("error[E0308]: mismatched types: expected `&str`, found `String`");
         assert!(matches!(
             error.category,
             ErrorCategory::Code {
@@ -645,15 +642,16 @@ mod tests {
 
     #[test]
     fn test_tool_error_with_raw_output() {
-        let error = ToolError::new("error")
-            .with_raw_output("full compiler output here");
-        assert_eq!(error.raw_output, Some("full compiler output here".to_string()));
+        let error = ToolError::new("error").with_raw_output("full compiler output here");
+        assert_eq!(
+            error.raw_output,
+            Some("full compiler output here".to_string())
+        );
     }
 
     #[test]
     fn test_tool_error_with_suggested_fix() {
-        let error = ToolError::new("error")
-            .with_suggested_fix("try this");
+        let error = ToolError::new("error").with_suggested_fix("try this");
         assert_eq!(error.suggested_fix, Some("try this".to_string()));
     }
 
@@ -674,8 +672,12 @@ mod tests {
     fn test_tool_executor_tool_names() {
         let mut executor = ToolExecutor::with_defaults();
 
-        fn tool_a(_: Value) -> Result<String, String> { Ok("a".to_string()) }
-        fn tool_b(_: Value) -> Result<String, String> { Ok("b".to_string()) }
+        fn tool_a(_: Value) -> Result<String, String> {
+            Ok("a".to_string())
+        }
+        fn tool_b(_: Value) -> Result<String, String> {
+            Ok("b".to_string())
+        }
 
         executor.register_tool("tool_a", tool_a);
         executor.register_tool("tool_b", tool_b);
@@ -845,15 +847,30 @@ mod tests {
         let executor = ToolExecutor::new(config);
 
         // retry 1: 1000 * 2^0 = 1000
-        assert_eq!(executor.calculate_retry_delay(1), Duration::from_millis(1000));
+        assert_eq!(
+            executor.calculate_retry_delay(1),
+            Duration::from_millis(1000)
+        );
         // retry 2: 1000 * 2^1 = 2000
-        assert_eq!(executor.calculate_retry_delay(2), Duration::from_millis(2000));
+        assert_eq!(
+            executor.calculate_retry_delay(2),
+            Duration::from_millis(2000)
+        );
         // retry 3: 1000 * 2^2 = 4000
-        assert_eq!(executor.calculate_retry_delay(3), Duration::from_millis(4000));
+        assert_eq!(
+            executor.calculate_retry_delay(3),
+            Duration::from_millis(4000)
+        );
         // retry 4: 1000 * 2^3 = 8000
-        assert_eq!(executor.calculate_retry_delay(4), Duration::from_millis(8000));
+        assert_eq!(
+            executor.calculate_retry_delay(4),
+            Duration::from_millis(8000)
+        );
         // retry 5: 1000 * 2^4 = 16000, capped at 10000
-        assert_eq!(executor.calculate_retry_delay(5), Duration::from_millis(10000));
+        assert_eq!(
+            executor.calculate_retry_delay(5),
+            Duration::from_millis(10000)
+        );
     }
 
     #[test]
@@ -867,12 +884,30 @@ mod tests {
         let executor = ToolExecutor::new(config);
 
         // Verify backoff sequence: 100, 200, 400, 800, capped at 1000
-        assert_eq!(executor.calculate_retry_delay(1), Duration::from_millis(100));
-        assert_eq!(executor.calculate_retry_delay(2), Duration::from_millis(200));
-        assert_eq!(executor.calculate_retry_delay(3), Duration::from_millis(400));
-        assert_eq!(executor.calculate_retry_delay(4), Duration::from_millis(800));
-        assert_eq!(executor.calculate_retry_delay(5), Duration::from_millis(1000)); // capped
-        assert_eq!(executor.calculate_retry_delay(10), Duration::from_millis(1000)); // still capped
+        assert_eq!(
+            executor.calculate_retry_delay(1),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            executor.calculate_retry_delay(2),
+            Duration::from_millis(200)
+        );
+        assert_eq!(
+            executor.calculate_retry_delay(3),
+            Duration::from_millis(400)
+        );
+        assert_eq!(
+            executor.calculate_retry_delay(4),
+            Duration::from_millis(800)
+        );
+        assert_eq!(
+            executor.calculate_retry_delay(5),
+            Duration::from_millis(1000)
+        ); // capped
+        assert_eq!(
+            executor.calculate_retry_delay(10),
+            Duration::from_millis(1000)
+        ); // still capped
     }
 
     #[test]

@@ -183,7 +183,9 @@ impl RepoStatus {
         self.files.iter().any(|f| {
             matches!(
                 f.status,
-                FileStatusKind::Modified | FileStatusKind::Deleted | FileStatusKind::StagedWithChanges
+                FileStatusKind::Modified
+                    | FileStatusKind::Deleted
+                    | FileStatusKind::StagedWithChanges
             )
         })
     }
@@ -251,7 +253,10 @@ impl GitRepo {
             .recurse_untracked_dirs(true);
 
         // Get status entries
-        let statuses = self.repo.statuses(Some(&mut opts)).map_err(GitError::StatusError)?;
+        let statuses = self
+            .repo
+            .statuses(Some(&mut opts))
+            .map_err(GitError::StatusError)?;
 
         let mut files = Vec::new();
         let mut has_conflicts = false;
@@ -695,10 +700,8 @@ impl FileGrouper {
 
         for (component, indices) in component_map {
             if indices.len() >= 2 {
-                let group_files: Vec<FileStatus> = indices
-                    .iter()
-                    .map(|&i| files[i].clone())
-                    .collect();
+                let group_files: Vec<FileStatus> =
+                    indices.iter().map(|&i| files[i].clone()).collect();
 
                 for idx in indices {
                     used_indices.insert(idx);
@@ -729,7 +732,12 @@ impl FileGrouper {
         // Skip generic names
         if file_stem == "mod" || file_stem == "lib" || file_stem == "main" || file_stem == "index" {
             // Use parent directory name instead
-            return path.parent()?.file_name()?.to_string_lossy().to_string().into();
+            return path
+                .parent()?
+                .file_name()?
+                .to_string_lossy()
+                .to_string()
+                .into();
         }
 
         // Remove common suffixes
@@ -753,7 +761,8 @@ impl FileGrouper {
         let mut dir_map: HashMap<String, Vec<FileStatus>> = HashMap::new();
 
         for file in files.drain(..) {
-            let dir = file.path
+            let dir = file
+                .path
                 .parent()
                 .and_then(|p| p.to_str())
                 .unwrap_or("")
@@ -880,10 +889,7 @@ mod tests {
 
         assert!(!status.is_clean());
         assert_eq!(status.modified_files().len(), 1);
-        assert_eq!(
-            status.modified_files()[0].path,
-            PathBuf::from("test.txt")
-        );
+        assert_eq!(status.modified_files()[0].path, PathBuf::from("test.txt"));
     }
 
     #[test]
@@ -1048,7 +1054,10 @@ mod tests {
         // Canonicalize both paths to handle macOS symlinks (/var -> /private/var)
         let root = git_repo.root().expect("Should have root");
         let canonical_root = root.canonicalize().expect("Failed to canonicalize root");
-        let canonical_temp = temp_dir.path().canonicalize().expect("Failed to canonicalize temp");
+        let canonical_temp = temp_dir
+            .path()
+            .canonicalize()
+            .expect("Failed to canonicalize temp");
         assert_eq!(canonical_root, canonical_temp);
     }
 
@@ -1245,9 +1254,11 @@ mod tests {
         let groups = FileGrouper::group_files(&files);
 
         // handler and handler_test should be together
-        let handler_group = groups
-            .iter()
-            .find(|g| g.files.iter().any(|f| f.path.to_string_lossy().contains("handler.rs")));
+        let handler_group = groups.iter().find(|g| {
+            g.files
+                .iter()
+                .any(|f| f.path.to_string_lossy().contains("handler.rs"))
+        });
 
         assert!(handler_group.is_some());
         let group = handler_group.unwrap();
@@ -1290,9 +1301,15 @@ mod tests {
         assert!(groups.len() >= 3);
 
         // Verify we have each type of group
-        let has_test_impl = groups.iter().any(|g| g.reason == GroupReason::TestAndImplementation);
-        let has_config = groups.iter().any(|g| g.reason == GroupReason::Configuration);
-        let has_docs = groups.iter().any(|g| g.reason == GroupReason::Documentation);
+        let has_test_impl = groups
+            .iter()
+            .any(|g| g.reason == GroupReason::TestAndImplementation);
+        let has_config = groups
+            .iter()
+            .any(|g| g.reason == GroupReason::Configuration);
+        let has_docs = groups
+            .iter()
+            .any(|g| g.reason == GroupReason::Documentation);
 
         assert!(has_test_impl, "Should have test+impl group");
         assert!(has_config, "Should have config group");
@@ -1329,8 +1346,14 @@ mod tests {
     #[test]
     fn test_group_reason_description() {
         assert_eq!(GroupReason::SameDirectory.description(), "same directory");
-        assert_eq!(GroupReason::TestAndImplementation.description(), "test and implementation");
-        assert_eq!(GroupReason::SharedComponent.description(), "related component");
+        assert_eq!(
+            GroupReason::TestAndImplementation.description(),
+            "test and implementation"
+        );
+        assert_eq!(
+            GroupReason::SharedComponent.description(),
+            "related component"
+        );
         assert_eq!(GroupReason::Configuration.description(), "configuration");
         assert_eq!(GroupReason::Documentation.description(), "documentation");
         assert_eq!(GroupReason::Ungrouped.description(), "ungrouped");
@@ -1351,16 +1374,16 @@ mod tests {
         );
 
         // Not a test file
-        assert_eq!(
-            FileGrouper::extract_impl_pattern("src/parser.rs"),
-            None
-        );
+        assert_eq!(FileGrouper::extract_impl_pattern("src/parser.rs"), None);
     }
 
     #[test]
     fn test_matches_impl_pattern() {
         assert!(FileGrouper::matches_impl_pattern("src/parser.rs", "parser"));
-        assert!(FileGrouper::matches_impl_pattern("src/parser/mod.rs", "parser"));
+        assert!(FileGrouper::matches_impl_pattern(
+            "src/parser/mod.rs",
+            "parser"
+        ));
         assert!(!FileGrouper::matches_impl_pattern("src/lexer.rs", "parser"));
     }
 }

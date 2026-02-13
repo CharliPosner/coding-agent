@@ -1250,8 +1250,11 @@ warning: unused variable
     #[test]
     fn test_suggestion_with_replacement() {
         let loc = DiagnosticLocation::new("test.rs", 10);
-        let suggestion =
-            DiagnosticSuggestion::with_replacement("add import", loc, "use std::collections::HashMap;");
+        let suggestion = DiagnosticSuggestion::with_replacement(
+            "add import",
+            loc,
+            "use std::collections::HashMap;",
+        );
 
         assert!(suggestion.is_applicable);
         assert!(suggestion.location.is_some());
