@@ -40,6 +40,7 @@ futures = { workspace = true }
 tempfile = "3.10"
 expectrl = "0.7"           # PTY-based interactive testing
 insta = "1.34"             # Snapshot testing
+term-transcript = "0.3"    # Terminal output capture with ANSI
 assert_cmd = "2.0"         # CLI subprocess testing
 predicates = "3.0"         # Output assertions
 wiremock = "0.5"           # Mock HTTP server for API
