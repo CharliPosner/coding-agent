@@ -265,6 +265,35 @@ impl Config {
     pub fn to_toml(&self) -> Result<String, ConfigError> {
         toml::to_string_pretty(self).map_err(ConfigError::SerializeError)
     }
+
+    /// Add a trusted path to the configuration and save to disk
+    ///
+    /// This is called when a user responds with "always" to a permission prompt.
+    /// The path is added to the trusted_paths list and the config is saved.
+    pub fn add_trusted_path(&mut self, path: &str) -> Result<(), ConfigError> {
+        // Only add if not already present
+        if !self.permissions.trusted_paths.contains(&path.to_string()) {
+            self.permissions.trusted_paths.push(path.to_string());
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    /// Add a trusted path to the configuration and save to a specific path
+    ///
+    /// This variant allows specifying a custom config file path (useful for testing).
+    pub fn add_trusted_path_to(
+        &mut self,
+        path: &str,
+        config_path: &PathBuf,
+    ) -> Result<(), ConfigError> {
+        // Only add if not already present
+        if !self.permissions.trusted_paths.contains(&path.to_string()) {
+            self.permissions.trusted_paths.push(path.to_string());
+            self.save_to(config_path)?;
+        }
+        Ok(())
+    }
 }
 
 /// Merge two TOML values, with the second taking precedence
@@ -437,5 +466,89 @@ mod tests {
         assert!(toml.contains("[model]"));
         assert!(toml.contains("[behavior]"));
         assert!(toml.contains("[permissions]"));
+    }
+
+    #[test]
+    fn test_always_adds_to_config() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config_path = temp_dir.path().join("config.toml");
+
+        // Create a config with no trusted paths
+        let mut config = Config::default();
+        assert!(config.permissions.trusted_paths.is_empty());
+
+        // Add a trusted path (simulating "always" response)
+        config
+            .add_trusted_path_to("/Users/test/projects", &config_path)
+            .expect("Should add trusted path");
+
+        // Verify in-memory config updated
+        assert!(config
+            .permissions
+            .trusted_paths
+            .contains(&"/Users/test/projects".to_string()));
+
+        // Verify persisted to disk
+        let loaded = Config::load_from(&config_path).expect("Should load config");
+        assert!(loaded
+            .permissions
+            .trusted_paths
+            .contains(&"/Users/test/projects".to_string()));
+    }
+
+    #[test]
+    fn test_always_adds_to_config_no_duplicates() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config_path = temp_dir.path().join("config.toml");
+
+        let mut config = Config::default();
+
+        // Add the same path twice
+        config
+            .add_trusted_path_to("/Users/test/projects", &config_path)
+            .expect("Should add trusted path");
+        config
+            .add_trusted_path_to("/Users/test/projects", &config_path)
+            .expect("Should handle duplicate");
+
+        // Should only have one entry
+        let count = config
+            .permissions
+            .trusted_paths
+            .iter()
+            .filter(|p| *p == "/Users/test/projects")
+            .count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_always_adds_multiple_paths() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config_path = temp_dir.path().join("config.toml");
+
+        let mut config = Config::default();
+
+        // Add multiple paths
+        config
+            .add_trusted_path_to("/Users/test/projects", &config_path)
+            .expect("Should add first path");
+        config
+            .add_trusted_path_to("/Users/test/documents", &config_path)
+            .expect("Should add second path");
+
+        // Both paths should be present
+        assert_eq!(config.permissions.trusted_paths.len(), 2);
+        assert!(config
+            .permissions
+            .trusted_paths
+            .contains(&"/Users/test/projects".to_string()));
+        assert!(config
+            .permissions
+            .trusted_paths
+            .contains(&"/Users/test/documents".to_string()));
+
+        // Verify persisted
+        let loaded = Config::load_from(&config_path).expect("Should load config");
+        assert_eq!(loaded.permissions.trusted_paths.len(), 2);
     }
 }

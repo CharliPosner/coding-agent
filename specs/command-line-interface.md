@@ -971,7 +971,7 @@ src/
 - [x] Path matching logic (supports `~`, globs)
 - [x] Permission check before file write/modify
 - [x] Permission prompt UI (Y/n/always/never)
-- [ ] "Always" adds to trusted paths in config
+- [x] "Always" adds to trusted paths in config
 - [ ] Read operations always allowed
 - [ ] Permission decision caching (per-session)
 
