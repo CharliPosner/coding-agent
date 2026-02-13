@@ -1205,14 +1205,14 @@ src/
 **Goal:** Full workflow support for specs, docs, and model switching.
 
 **Deliverables:**
-- [ ] `/spec <name>` - create spec file, enter planning mode
-- [ ] Planning mode (different prompt behavior)
-- [ ] Spec file template generation
-- [ ] `/document <topic>` - Obsidian integration
-- [ ] Vault search functionality
-- [ ] Note creation and update
-- [ ] `/model [name]` - switch AI model
-- [ ] Model availability validation
+- [x] `/spec <name>` - create spec file, enter planning mode
+- [x] Planning mode (different prompt behavior)
+- [x] Spec file template generation
+- [x] `/document <topic>` - Obsidian integration
+- [x] Vault search functionality
+- [x] Note creation and update
+- [x] `/model [name]` - switch AI model
+- [x] Model availability validation
 
 **Files to create:**
 ```

@@ -9,11 +9,15 @@ pub mod config;
 mod context;
 mod cost;
 mod diff;
+mod document;
 mod exit;
 mod help;
 mod history;
+mod model;
+mod spec;
 mod undo;
 
+use crate::cli::Mode;
 use crate::tokens::CostTracker;
 use std::collections::HashMap;
 
@@ -30,6 +34,8 @@ pub enum CommandResult {
     Output(String),
     /// Command failed with an error
     Error(String),
+    /// Command requests a mode change with optional output
+    ModeChange { mode: Mode, output: Option<String> },
 }
 
 /// Trait for implementing commands
@@ -81,10 +87,13 @@ impl CommandRegistry {
         registry.register(&context::ContextCommand);
         registry.register(&cost::CostCommand);
         registry.register(&diff::DiffCommand);
+        registry.register(&document::DocumentCommand);
         registry.register(&exit::ExitCommand);
         registry.register(&exit::QuitCommand);
         registry.register(&exit::QCommand);
         registry.register(&history::HistoryCommand);
+        registry.register(&model::ModelCommand);
+        registry.register(&spec::SpecCommand);
         registry.register(&undo::UndoCommand);
         registry
     }
@@ -206,6 +215,12 @@ mod tests {
 
         // History command exists
         assert!(registry.get("history").is_some());
+
+        // Model command exists
+        assert!(registry.get("model").is_some());
+
+        // Spec command exists
+        assert!(registry.get("spec").is_some());
 
         // Undo command exists
         assert!(registry.get("undo").is_some());
