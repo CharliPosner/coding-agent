@@ -1390,7 +1390,7 @@ This phase establishes a comprehensive test suite using multiple testing approac
 4. **Workflow Integration** - End-to-end user journey tests
 
 **Deliverables:**
-- [ ] PTY test harness using `expectrl` or `rexpect`
+- [x] PTY test harness using `expectrl` or `rexpect`
 - [ ] Mock Claude API server for deterministic testing
 - [ ] Terminal output snapshot tests with `insta` + `term-transcript`
 - [ ] Full workflow integration tests
