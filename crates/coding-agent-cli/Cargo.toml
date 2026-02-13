@@ -42,6 +42,6 @@ expectrl = "0.7"           # PTY-based interactive testing
 insta = "1.34"             # Snapshot testing
 assert_cmd = "2.0"         # CLI subprocess testing
 predicates = "3.0"         # Output assertions
-# wiremock = "0.6"           # Mock HTTP server for API (commented out for now - needs newer Rust)
+wiremock = "0.5"           # Mock HTTP server for API
 tokio-test = "0.4"         # Async test utilities
 regex = "1.10"             # For ANSI stripping in tests

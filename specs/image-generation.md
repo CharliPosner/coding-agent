@@ -82,7 +82,6 @@ Saved to .generated/hallucinations/2024-02-13_waiting-room.png
 | recursive | Self-reference, loops, mirrors | Infinite regress, fractals, mise en abyme |
 | sleep-paralysis | Unsettling, uncanny, presence | Dark rooms, shadow figures, paralyzed POV |
 
-**Sequence generation:** ~20% of the time, it decides the musing needs a visual story and generates 3-4 related images instead of one.
 
 ### `/reflect`
 

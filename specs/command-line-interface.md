@@ -1391,7 +1391,7 @@ This phase establishes a comprehensive test suite using multiple testing approac
 
 **Deliverables:**
 - [x] PTY test harness using `expectrl` or `rexpect`
-- [ ] Mock Claude API server for deterministic testing
+- [x] Mock Claude API server for deterministic testing
 - [ ] Terminal output snapshot tests with `insta` + `term-transcript`
 - [ ] Full workflow integration tests
 - [ ] Visual regression tests for UI components
