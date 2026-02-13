@@ -569,6 +569,126 @@ mod tests {
     }
 
     #[test]
+    fn test_edit_file_old_str_not_found() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        fs::write(&file_path, "Hello, World!").unwrap();
+
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "old_str": "Goodbye",
+            "new_str": "Hi"
+        });
+
+        let result = edit_file(input);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "old_str not found in file");
+    }
+
+    #[test]
+    fn test_edit_file_multiple_matches() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        fs::write(&file_path, "Hello Hello Hello").unwrap();
+
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "old_str": "Hello",
+            "new_str": "Hi"
+        });
+
+        let result = edit_file(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("found 3 times"));
+    }
+
+    #[test]
+    fn test_edit_file_create_new() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("new_file.txt");
+
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "old_str": "",
+            "new_str": "New content"
+        });
+
+        let result = edit_file(input);
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("Successfully created"));
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "New content");
+    }
+
+    #[test]
+    fn test_edit_file_create_with_directories() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("subdir/nested/new_file.txt");
+
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "old_str": "",
+            "new_str": "Nested content"
+        });
+
+        let result = edit_file(input);
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "Nested content");
+    }
+
+    #[test]
+    fn test_edit_file_append() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        fs::write(&file_path, "Hello").unwrap();
+
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "old_str": "",
+            "new_str": ", World!"
+        });
+
+        let result = edit_file(input);
+        assert!(result.is_ok());
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "Hello, World!");
+    }
+
+    #[test]
+    fn test_edit_file_same_old_new() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        fs::write(&file_path, "Hello").unwrap();
+
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "old_str": "Hello",
+            "new_str": "Hello"
+        });
+
+        let result = edit_file(input);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "old_str and new_str must be different");
+    }
+
+    #[test]
+    fn test_edit_file_empty_path() {
+        let input = json!({
+            "path": "",
+            "old_str": "test",
+            "new_str": "replaced"
+        });
+
+        let result = edit_file(input);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "path cannot be empty");
+    }
+
+    #[test]
     fn test_list_files() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("file1.txt"), "").unwrap();

@@ -1084,7 +1084,7 @@ src/
 - [x] Wire tools from `coding-agent-core` into CLI's API calls
 - [x] `read_file` tool - Read file contents
 - [x] `write_file` tool - Create/overwrite files
-- [ ] `edit_file` tool - Make targeted edits to existing files
+- [x] `edit_file` tool - Make targeted edits to existing files
 - [ ] `list_files` tool - List directory contents
 - [ ] `bash` tool - Execute shell commands
 - [ ] `code_search` tool - Search codebase with ripgrep patterns
