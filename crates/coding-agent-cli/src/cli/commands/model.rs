@@ -188,6 +188,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: registry.clone(),
             cost_tracker,
+            agent_manager: None,
         };
 
         let result = cmd.execute(&["claude-3-opus"], &mut ctx);
@@ -209,6 +210,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: registry.clone(),
             cost_tracker,
+            agent_manager: None,
         };
 
         let result = cmd.execute(&["invalid-model"], &mut ctx);
@@ -230,6 +232,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: registry.clone(),
             cost_tracker,
+            agent_manager: None,
         };
 
         let result = cmd.execute(&[], &mut ctx);

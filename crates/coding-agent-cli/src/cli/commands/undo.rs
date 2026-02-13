@@ -437,6 +437,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -502,6 +503,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             let result = cmd.execute(&["--hard"], &mut ctx);
@@ -558,6 +560,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -606,6 +609,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -651,6 +655,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -703,6 +708,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             // Revert the file with --hard

@@ -125,6 +125,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: registry.clone(),
             cost_tracker,
+            agent_manager: None,
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -148,6 +149,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: registry.clone(),
             cost_tracker,
+            agent_manager: None,
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -172,6 +174,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: registry.clone(),
             cost_tracker,
+            agent_manager: None,
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -201,6 +204,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: registry.clone(),
             cost_tracker,
+            agent_manager: None,
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -237,6 +241,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: registry.clone(),
             cost_tracker,
+            agent_manager: None,
         };
 
         let result = cmd.execute(&[], &mut ctx);

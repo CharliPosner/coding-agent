@@ -54,6 +54,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: registry.clone(),
             cost_tracker: CostTracker::with_default_model(),
+            agent_manager: None,
         };
 
         let result = cmd.execute(&[], &mut ctx);

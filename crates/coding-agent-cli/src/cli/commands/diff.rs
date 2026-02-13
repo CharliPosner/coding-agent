@@ -504,6 +504,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -554,6 +555,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -609,6 +611,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             // Request only staged changes

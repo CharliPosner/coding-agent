@@ -1330,8 +1330,8 @@ src/
 - [x] Multi-agent status bar UI
 - [x] Progress tracking per agent
 - [x] Agent result aggregation
-- [ ] Cancel individual agents
-- [ ] Parallel execution with `tokio`
+- [x] Cancel individual agents
+- [x] Parallel execution with `tokio`
 
 **Files to create:**
 ```

@@ -270,6 +270,7 @@ mod tests {
         let ctx = CommandContext {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
+            agent_manager: None,
         };
 
         (ctx, original_dir)

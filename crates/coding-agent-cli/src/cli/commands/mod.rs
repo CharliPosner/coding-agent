@@ -3,6 +3,7 @@
 //! This module provides a command registry pattern for slash commands.
 //! Commands are registered by name and can be looked up and executed.
 
+mod cancel;
 mod clear;
 mod commit;
 pub mod config;
@@ -62,6 +63,8 @@ pub struct CommandContext {
     pub registry: CommandRegistry,
     /// Cost tracker for token usage and cost calculations
     pub cost_tracker: CostTracker,
+    /// Agent manager for tracking and controlling agents
+    pub agent_manager: Option<std::sync::Arc<crate::agents::manager::AgentManager>>,
 }
 
 /// Registry of available commands
@@ -82,6 +85,7 @@ impl CommandRegistry {
     pub fn with_defaults() -> Self {
         let mut registry = Self::new();
         registry.register(&help::HelpCommand);
+        registry.register(&cancel::CancelCommand);
         registry.register(&clear::ClearCommand);
         registry.register(&commit::CommitCommand);
         registry.register(&config::ConfigCommand);

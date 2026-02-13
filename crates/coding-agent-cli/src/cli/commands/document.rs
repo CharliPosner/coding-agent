@@ -212,6 +212,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
+            agent_manager: None,
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -236,6 +237,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
+            agent_manager: None,
         };
 
         let result = cmd.execute(&["test", "topic"], &mut ctx);
@@ -253,6 +255,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
+            agent_manager: None,
         };
 
         // Just test that the flag is parsed (won't actually search without a valid vault)
@@ -273,6 +276,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
+            agent_manager: None,
         };
 
         let result = cmd.execute(&["test", "--new"], &mut ctx);

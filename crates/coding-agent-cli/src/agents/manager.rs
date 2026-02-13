@@ -153,6 +153,79 @@ impl AgentManager {
         id
     }
 
+    /// Spawns a new async agent with progress reporting capabilities.
+    ///
+    /// Unlike `spawn_with_progress`, this method accepts an async function,
+    /// allowing for true concurrent execution without blocking the thread pool.
+    /// This is ideal for I/O-bound operations like network calls, file I/O, etc.
+    ///
+    /// Returns the agent ID.
+    pub fn spawn_async<F, Fut>(&self, name: String, description: String, task: F) -> AgentId
+    where
+        F: FnOnce(ProgressReporter) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<String, String>> + Send + 'static,
+    {
+        // Generate unique ID
+        let id = {
+            let mut next = self.next_id.lock().unwrap();
+            let id = *next;
+            *next += 1;
+            AgentId(id)
+        };
+
+        // Create cancellation channel
+        let (cancel_tx, mut cancel_rx) = mpsc::channel(1);
+
+        // Create progress reporter for this agent
+        let reporter = ProgressReporter {
+            agent_id: id,
+            tx: self.progress_tx.clone(),
+        };
+
+        // Spawn the agent task
+        let agents_clone = Arc::clone(&self.agents);
+        let id_clone = id;
+
+        let handle = tokio::spawn(async move {
+            // Update status to running
+            {
+                let mut agents = agents_clone.lock().unwrap();
+                if let Some(agent) = agents.get_mut(&id_clone) {
+                    agent.status.state = AgentState::Running;
+                }
+            }
+
+            // Run the async task or check for cancellation
+            tokio::select! {
+                result = task(reporter) => {
+                    result
+                }
+                _ = cancel_rx.recv() => {
+                    Err("Agent cancelled".to_string())
+                }
+            }
+        });
+
+        // Create and store the managed agent
+        let managed_agent = ManagedAgent {
+            name: name.clone(),
+            description: description.clone(),
+            status: AgentStatus {
+                id,
+                name,
+                description,
+                state: AgentState::Queued,
+                progress: 0,
+            },
+            handle,
+            cancel_tx,
+        };
+
+        self.agents.lock().unwrap().insert(id, managed_agent);
+
+        id
+    }
+
     /// Updates the progress of an agent.
     pub fn update_progress(&self, id: AgentId, progress: u8) -> Result<(), String> {
         let mut agents = self.agents.lock().unwrap();
@@ -974,5 +1047,224 @@ mod tests {
 
         // Cleanup should remove completed ones
         manager.cleanup_completed();
+    }
+
+    #[tokio::test]
+    async fn test_async_agent_basic() {
+        let manager = AgentManager::new();
+
+        // Spawn an async agent
+        let id = manager.spawn_async(
+            "async-agent".to_string(),
+            "Testing async execution".to_string(),
+            |_reporter| async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                Ok("async result".to_string())
+            },
+        );
+
+        // Initially should be queued
+        let status = manager.get_status(id).unwrap();
+        assert_eq!(status.name, "async-agent");
+        assert!(matches!(status.state, AgentState::Queued | AgentState::Running));
+
+        // Wait for completion
+        let result = manager.wait(id).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "async result");
+    }
+
+    #[tokio::test]
+    async fn test_async_agent_with_progress() {
+        let manager = AgentManager::new();
+
+        // Spawn an async agent that reports progress
+        let id = manager.spawn_async(
+            "progress-async".to_string(),
+            "Testing async progress".to_string(),
+            |reporter| async move {
+                reporter.report(25);
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                reporter.report(50);
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                reporter.report(75);
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                reporter.report(100);
+                Ok("done".to_string())
+            },
+        );
+
+        // Give agent time to start and report progress
+        tokio::time::sleep(Duration::from_millis(30)).await;
+
+        // Process progress updates
+        let updates = manager.process_progress_updates();
+        assert!(updates > 0);
+
+        // Check progress was updated
+        let status = manager.get_status(id).unwrap();
+        assert!(status.progress > 0);
+
+        manager.wait(id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_async_parallel_execution() {
+        let manager = AgentManager::new();
+
+        // Spawn multiple async agents that run truly in parallel
+        let id1 = manager.spawn_async(
+            "async-1".to_string(),
+            "First async agent".to_string(),
+            |_| async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                Ok("result-1".to_string())
+            },
+        );
+
+        let id2 = manager.spawn_async(
+            "async-2".to_string(),
+            "Second async agent".to_string(),
+            |_| async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                Ok("result-2".to_string())
+            },
+        );
+
+        let id3 = manager.spawn_async(
+            "async-3".to_string(),
+            "Third async agent".to_string(),
+            |_| async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                Ok("result-3".to_string())
+            },
+        );
+
+        // Measure time - should be ~100ms (parallel), not ~300ms (sequential)
+        let start = std::time::Instant::now();
+        let results = manager.wait_all_parallel(vec![id1, id2, id3]).await;
+        let elapsed = start.elapsed();
+
+        assert!(results.is_ok());
+        let results = results.unwrap();
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0], "result-1");
+        assert_eq!(results[1], "result-2");
+        assert_eq!(results[2], "result-3");
+
+        // Verify parallel execution - should complete in roughly the time of one task
+        assert!(elapsed < Duration::from_millis(200), "Expected parallel execution to take ~100ms, took {:?}", elapsed);
+    }
+
+    #[tokio::test]
+    async fn test_async_agent_cancellation() {
+        let manager = AgentManager::new();
+
+        // Spawn a long-running async agent
+        let id = manager.spawn_async(
+            "long-async".to_string(),
+            "Long async task".to_string(),
+            |_| async {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                Ok("should not see this".to_string())
+            },
+        );
+
+        // Give it a moment to start
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Cancel the agent
+        let cancel_result = manager.cancel(id).await;
+        assert!(cancel_result.is_ok());
+
+        // Wait for it to finish (should be cancelled)
+        let result = manager.wait(id).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("cancelled"));
+    }
+
+    #[tokio::test]
+    async fn test_async_agent_failure() {
+        let manager = AgentManager::new();
+
+        // Spawn an async agent that fails
+        let id = manager.spawn_async(
+            "failing-async".to_string(),
+            "This will fail".to_string(),
+            |_| async {
+                Err("intentional async error".to_string())
+            },
+        );
+
+        // Wait for it to fail
+        let result = manager.wait(id).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "intentional async error");
+    }
+
+    #[tokio::test]
+    async fn test_mixed_sync_async_agents() {
+        let manager = AgentManager::new();
+
+        // Spawn both sync and async agents
+        let sync_id = manager.spawn(
+            "sync-agent".to_string(),
+            "Sync task".to_string(),
+            || {
+                std::thread::sleep(Duration::from_millis(50));
+                Ok("sync-result".to_string())
+            },
+        );
+
+        let async_id = manager.spawn_async(
+            "async-agent".to_string(),
+            "Async task".to_string(),
+            |_| async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                Ok("async-result".to_string())
+            },
+        );
+
+        // Wait for both
+        let results = manager.wait_all_parallel(vec![sync_id, async_id]).await;
+
+        assert!(results.is_ok());
+        let results = results.unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0], "sync-result");
+        assert_eq!(results[1], "async-result");
+    }
+
+    #[tokio::test]
+    async fn test_many_async_agents_parallel() {
+        let manager = AgentManager::new();
+
+        // Spawn many async agents to test true parallelism
+        let mut ids = Vec::new();
+        for i in 0..20 {
+            let id = manager.spawn_async(
+                format!("agent-{}", i),
+                format!("Task {}", i),
+                move |reporter| async move {
+                    reporter.report(50);
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    reporter.report(100);
+                    Ok(format!("result-{}", i))
+                },
+            );
+            ids.push(id);
+        }
+
+        // Measure time - with true async parallelism, should be ~100ms
+        let start = std::time::Instant::now();
+        let results = manager.wait_all_parallel(ids).await;
+        let elapsed = start.elapsed();
+
+        assert!(results.is_ok());
+        let results = results.unwrap();
+        assert_eq!(results.len(), 20);
+
+        // Verify parallel execution - 20 agents at 100ms each should not take 2 seconds
+        assert!(elapsed < Duration::from_millis(500), "Expected parallel execution, took {:?}", elapsed);
     }
 }

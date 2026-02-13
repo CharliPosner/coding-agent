@@ -133,6 +133,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry,
             cost_tracker: CostTracker::with_default_model(),
+            agent_manager: None,
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -167,6 +168,7 @@ mod tests {
         let mut ctx = CommandContext {
             registry,
             cost_tracker: CostTracker::with_default_model(),
+            agent_manager: None,
         };
 
         let result = cmd.execute(&[], &mut ctx);

@@ -750,6 +750,7 @@ impl Repl {
         let mut ctx = CommandContext {
             registry: self.registry.clone(),
             cost_tracker: self.cost_tracker.clone(),
+            agent_manager: None,
         };
 
         match self.registry.get(name) {

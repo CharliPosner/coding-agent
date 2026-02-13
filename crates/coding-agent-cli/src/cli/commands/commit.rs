@@ -1046,6 +1046,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             // Run the commit with -a flag to stage the new file
@@ -1123,6 +1124,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -1171,6 +1173,7 @@ mod tests {
             let mut ctx = CommandContext {
                 registry,
                 cost_tracker,
+                agent_manager: None,
             };
 
             let result = cmd.execute(&[], &mut ctx);
