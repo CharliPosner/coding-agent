@@ -968,7 +968,7 @@ src/
 
 **Deliverables:**
 - [x] Trusted paths configuration
-- [ ] Path matching logic (supports `~`, globs)
+- [x] Path matching logic (supports `~`, globs)
 - [ ] Permission check before file write/modify
 - [ ] Permission prompt UI (Y/n/always/never)
 - [ ] "Always" adds to trusted paths in config
