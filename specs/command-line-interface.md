@@ -1148,8 +1148,8 @@ src/
 - [x] Smart file grouping (logically related changes)
 - [x] 3-sentence purpose-focused commit message generation
 - [x] Commit message preview and edit
-- [ ] `/diff` command
-- [ ] `/undo` command (revert last commit or file change)
+- [x] `/diff` command
+- [x] `/undo` command (revert last commit or file change)
 
 **Files to create:**
 ```
