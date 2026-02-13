@@ -1085,7 +1085,7 @@ src/
 - [x] `/commit` command (agent decides what to commit)
 - [x] `/commit --pick` (interactive file picker)
 - [x] Smart file grouping (logically related changes)
-- [ ] 3-sentence purpose-focused commit message generation
+- [x] 3-sentence purpose-focused commit message generation
 - [ ] Commit message preview and edit
 - [ ] `/diff` command
 - [ ] `/undo` command (revert last commit or file change)

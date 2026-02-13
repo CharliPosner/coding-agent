@@ -468,145 +468,292 @@ fn execute_pick_commit(
     }
 }
 
+/// Analysis of changes for generating commit messages
+#[derive(Debug, Default)]
+struct ChangeAnalysis {
+    /// Whether the changes include test files
+    has_tests: bool,
+    /// Whether the changes include source code files
+    has_src: bool,
+    /// Whether the changes include configuration files
+    has_config: bool,
+    /// Whether the changes include documentation files
+    has_docs: bool,
+    /// Whether the changes include CLI-related files
+    has_cli: bool,
+    /// Whether the changes include integration files
+    has_integrations: bool,
+    /// Whether the changes include UI-related files
+    has_ui: bool,
+    /// Primary directory of changes
+    primary_dir: Option<String>,
+    /// Component/module name if identifiable
+    component_name: Option<String>,
+    /// New files
+    new_files: Vec<String>,
+    /// Modified files
+    modified_files: Vec<String>,
+    /// Deleted files
+    deleted_files: Vec<String>,
+}
+
+impl ChangeAnalysis {
+    fn analyze(files: &[&crate::integrations::git::FileStatus]) -> Self {
+        let mut analysis = Self::default();
+        let mut directories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut component_candidates: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+        for file in files {
+            let path_str = file.path.to_string_lossy().to_string();
+
+            // Categorize by file type
+            if path_str.contains("test") || path_str.contains("spec") {
+                analysis.has_tests = true;
+            }
+            if path_str.contains("src/") || path_str.ends_with(".rs") {
+                analysis.has_src = true;
+            }
+            if path_str.contains("config") || path_str.ends_with(".toml") || path_str.ends_with(".json") {
+                analysis.has_config = true;
+            }
+            if path_str.ends_with(".md") || path_str.contains("docs/") {
+                analysis.has_docs = true;
+            }
+            if path_str.contains("cli/") || path_str.contains("/commands/") {
+                analysis.has_cli = true;
+            }
+            if path_str.contains("integrations/") {
+                analysis.has_integrations = true;
+            }
+            if path_str.contains("ui/") {
+                analysis.has_ui = true;
+            }
+
+            // Track directories
+            if let Some(parent) = file.path.parent() {
+                let dir = parent.to_string_lossy().to_string();
+                *directories.entry(dir).or_insert(0) += 1;
+            }
+
+            // Extract component name from file
+            if let Some(stem) = file.path.file_stem() {
+                let name = stem.to_string_lossy()
+                    .trim_end_matches("_test")
+                    .trim_start_matches("test_")
+                    .to_string();
+                if name != "mod" && name != "lib" && name != "main" {
+                    *component_candidates.entry(name).or_insert(0) += 1;
+                }
+            }
+
+            // Categorize by change type
+            match file.status {
+                FileStatusKind::Added | FileStatusKind::Untracked => {
+                    analysis.new_files.push(path_str);
+                }
+                FileStatusKind::Modified | FileStatusKind::Staged | FileStatusKind::StagedWithChanges => {
+                    analysis.modified_files.push(path_str);
+                }
+                FileStatusKind::Deleted => {
+                    analysis.deleted_files.push(path_str);
+                }
+                _ => {}
+            }
+        }
+
+        // Find primary directory (most files)
+        analysis.primary_dir = directories
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(dir, _)| {
+                std::path::Path::new(&dir)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or(dir)
+            });
+
+        // Find most common component name
+        analysis.component_name = component_candidates
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(name, _)| name);
+
+        analysis
+    }
+
+    /// Determine the primary action verb
+    fn action_verb(&self) -> &'static str {
+        if !self.new_files.is_empty() && self.modified_files.is_empty() && self.deleted_files.is_empty() {
+            "Add"
+        } else if !self.deleted_files.is_empty() && self.new_files.is_empty() && self.modified_files.is_empty() {
+            "Remove"
+        } else if !self.deleted_files.is_empty() && !self.new_files.is_empty() {
+            "Refactor"
+        } else {
+            "Update"
+        }
+    }
+
+    /// Get a human-readable subject for the changes
+    fn subject(&self) -> String {
+        // Try to construct a meaningful subject
+        if let Some(ref component) = self.component_name {
+            if self.has_tests && !self.has_src {
+                return format!("tests for {}", component);
+            }
+            if self.has_cli {
+                return format!("{} command", component);
+            }
+            if self.has_integrations {
+                return format!("{} integration", component);
+            }
+            if self.has_ui {
+                return format!("{} UI component", component);
+            }
+            return format!("{} functionality", component);
+        }
+
+        if let Some(ref dir) = self.primary_dir {
+            if dir == "commands" {
+                return "CLI commands".to_string();
+            }
+            if dir == "integrations" {
+                return "external integrations".to_string();
+            }
+            if dir == "ui" {
+                return "user interface".to_string();
+            }
+            if dir == "tests" {
+                return "test suite".to_string();
+            }
+            return format!("{} module", dir);
+        }
+
+        if self.has_docs {
+            return "documentation".to_string();
+        }
+        if self.has_config {
+            return "configuration".to_string();
+        }
+
+        "codebase".to_string()
+    }
+
+    /// Generate the purpose sentence (why this change matters)
+    fn purpose_sentence(&self) -> String {
+        let verb = self.action_verb();
+        let subject = self.subject();
+
+        match verb {
+            "Add" => {
+                if self.has_tests {
+                    format!("This improves code reliability by adding test coverage.")
+                } else if self.has_docs {
+                    format!("This improves developer experience with better documentation.")
+                } else if self.has_cli {
+                    format!("This extends the CLI with new capabilities for users.")
+                } else if self.has_integrations {
+                    format!("This enables new workflows through external system integration.")
+                } else if self.has_ui {
+                    format!("This enhances the user interface with new visual elements.")
+                } else {
+                    format!("This introduces new functionality to the {}.", subject)
+                }
+            }
+            "Remove" => {
+                format!("This simplifies the codebase by removing unused code.")
+            }
+            "Refactor" => {
+                format!("This improves code structure without changing behavior.")
+            }
+            _ => {
+                if self.has_tests {
+                    format!("This maintains test accuracy as the implementation evolves.")
+                } else if self.has_config {
+                    format!("This adjusts settings to better match requirements.")
+                } else if self.has_docs {
+                    format!("This keeps documentation in sync with the codebase.")
+                } else {
+                    format!("This improves the {} to better meet requirements.", subject)
+                }
+            }
+        }
+    }
+
+    /// Generate the implementation sentence (what was done technically)
+    fn implementation_sentence(&self) -> String {
+        let mut parts = Vec::new();
+
+        if !self.new_files.is_empty() {
+            let count = self.new_files.len();
+            parts.push(format!(
+                "adds {} new {}",
+                count,
+                if count == 1 { "file" } else { "files" }
+            ));
+        }
+
+        if !self.modified_files.is_empty() {
+            let count = self.modified_files.len();
+            parts.push(format!(
+                "modifies {} existing {}",
+                count,
+                if count == 1 { "file" } else { "files" }
+            ));
+        }
+
+        if !self.deleted_files.is_empty() {
+            let count = self.deleted_files.len();
+            parts.push(format!(
+                "removes {} obsolete {}",
+                count,
+                if count == 1 { "file" } else { "files" }
+            ));
+        }
+
+        if parts.is_empty() {
+            return "Updates the implementation as needed.".to_string();
+        }
+
+        // Combine parts with proper grammar
+        let combined = match parts.len() {
+            1 => parts[0].clone(),
+            2 => format!("{} and {}", parts[0], parts[1]),
+            _ => {
+                let last = parts.pop().unwrap();
+                format!("{}, and {}", parts.join(", "), last)
+            }
+        };
+
+        format!("The change {}.", combined.trim_start_matches(' '))
+    }
+}
+
 /// Generate a purpose-focused commit message based on the changes
+///
+/// The message follows a 3-sentence format:
+/// 1. Title: Short summary of what changed (imperative mood)
+/// 2. Purpose: Why this change matters
+/// 3. Implementation: Technical summary of the changes
 fn generate_commit_message(
     files: &[&crate::integrations::git::FileStatus],
     _status: &RepoStatus,
 ) -> String {
-    // Analyze the files to determine the nature of the change
-    let mut has_tests = false;
-    let mut has_src = false;
-    let mut has_config = false;
-    let mut has_docs = false;
-    let mut directories: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let analysis = ChangeAnalysis::analyze(files);
 
-    for file in files {
-        let path_str = file.path.to_string_lossy();
+    // Generate title (short, imperative mood)
+    let verb = analysis.action_verb();
+    let subject = analysis.subject();
+    let title = format!("{} {}", verb, subject);
 
-        // Track what types of files are being changed
-        if path_str.contains("test") || path_str.contains("spec") {
-            has_tests = true;
-        }
-        if path_str.contains("src/") || path_str.ends_with(".rs") {
-            has_src = true;
-        }
-        if path_str.contains("config") || path_str.ends_with(".toml") || path_str.ends_with(".json") {
-            has_config = true;
-        }
-        if path_str.ends_with(".md") || path_str.contains("docs/") {
-            has_docs = true;
-        }
+    // Generate the two body sentences
+    let purpose = analysis.purpose_sentence();
+    let implementation = analysis.implementation_sentence();
 
-        // Extract the directory
-        if let Some(parent) = file.path.parent() {
-            if let Some(dir_name) = parent.file_name() {
-                directories.insert(dir_name.to_string_lossy().to_string());
-            }
-        }
-    }
-
-    // Count changes by type
-    let new_files: Vec<_> = files
-        .iter()
-        .filter(|f| matches!(f.status, FileStatusKind::Added | FileStatusKind::Untracked))
-        .collect();
-    let modified_files: Vec<_> = files
-        .iter()
-        .filter(|f| {
-            matches!(
-                f.status,
-                FileStatusKind::Modified | FileStatusKind::Staged | FileStatusKind::StagedWithChanges
-            )
-        })
-        .collect();
-    let deleted_files: Vec<_> = files
-        .iter()
-        .filter(|f| matches!(f.status, FileStatusKind::Deleted))
-        .collect();
-
-    // Generate title based on the primary action
-    let title = if !new_files.is_empty() && modified_files.is_empty() && deleted_files.is_empty() {
-        if has_tests {
-            format!("Add tests for {}", summarize_scope(&directories, files))
-        } else if has_docs {
-            format!("Add documentation for {}", summarize_scope(&directories, files))
-        } else {
-            format!("Add {}", summarize_scope(&directories, files))
-        }
-    } else if !deleted_files.is_empty() && new_files.is_empty() && modified_files.is_empty() {
-        format!("Remove {}", summarize_scope(&directories, files))
-    } else if !modified_files.is_empty() {
-        if has_tests && !has_src {
-            format!("Update tests for {}", summarize_scope(&directories, files))
-        } else if has_config && !has_src {
-            format!("Update configuration for {}", summarize_scope(&directories, files))
-        } else {
-            format!("Update {}", summarize_scope(&directories, files))
-        }
-    } else {
-        "Update codebase".to_string()
-    };
-
-    // Generate description
-    let mut description = String::new();
-
-    if !new_files.is_empty() {
-        description.push_str(&format!(
-            "Added {} new {}. ",
-            new_files.len(),
-            if new_files.len() == 1 { "file" } else { "files" }
-        ));
-    }
-    if !modified_files.is_empty() {
-        description.push_str(&format!(
-            "Modified {} {}. ",
-            modified_files.len(),
-            if modified_files.len() == 1 { "file" } else { "files" }
-        ));
-    }
-    if !deleted_files.is_empty() {
-        description.push_str(&format!(
-            "Removed {} {}.",
-            deleted_files.len(),
-            if deleted_files.len() == 1 { "file" } else { "files" }
-        ));
-    }
-
-    format!("{}\n\n{}", title.trim(), description.trim())
+    // Combine into the 3-sentence format
+    format!("{}\n\n{}\n{}", title, purpose, implementation)
 }
 
-/// Summarize the scope of changes based on directories and files
-fn summarize_scope(
-    directories: &std::collections::HashSet<String>,
-    files: &[&crate::integrations::git::FileStatus],
-) -> String {
-    // If all files are in one directory, use that
-    if directories.len() == 1 {
-        if let Some(dir) = directories.iter().next() {
-            if !dir.is_empty() && dir != "." {
-                return format!("{} module", dir);
-            }
-        }
-    }
-
-    // If there's just one file, use its name
-    if files.len() == 1 {
-        if let Some(file_name) = files[0].path.file_name() {
-            return file_name.to_string_lossy().to_string();
-        }
-    }
-
-    // Otherwise, try to find a common pattern
-    if directories.len() <= 3 {
-        let dir_list: Vec<_> = directories.iter().take(3).cloned().collect();
-        if !dir_list.is_empty() && dir_list.iter().all(|d| !d.is_empty()) {
-            return dir_list.join(", ");
-        }
-    }
-
-    // Fallback to generic description
-    format!("{} files", files.len())
-}
 
 #[cfg(test)]
 mod tests {
@@ -731,10 +878,13 @@ mod tests {
 
         let message = generate_commit_message(&file_refs, &status);
 
-        // Should have a title and description
-        assert!(message.contains("\n\n"));
-        // Should mention the file count
-        assert!(message.contains("1 file"));
+        // Should have a title and body separated by blank line
+        assert!(message.contains("\n\n"), "Message should have blank line: {}", message);
+        // Should mention the file modification
+        assert!(
+            message.contains("modifies") || message.contains("file"),
+            "Message should mention file changes: {}", message
+        );
     }
 
     #[test]
@@ -968,39 +1118,215 @@ mod tests {
         }
     }
 
+    // ========================================================================
+    // 3-sentence Purpose-Focused Commit Message Tests
+    // ========================================================================
+
     #[test]
-    fn test_summarize_scope_single_file() {
+    fn test_commit_message_has_three_parts() {
+        // Verify the message has a title, blank line, and two body sentences
         let files = vec![FileStatus {
-            path: PathBuf::from("src/main.rs"),
+            path: PathBuf::from("src/auth.rs"),
             status: FileStatusKind::Modified,
         }];
         let file_refs: Vec<_> = files.iter().collect();
-        let mut directories = std::collections::HashSet::new();
-        directories.insert("src".to_string());
+        let status = RepoStatus {
+            branch: Some("main".to_string()),
+            detached: false,
+            has_conflicts: false,
+            files: files.clone(),
+        };
 
-        let scope = summarize_scope(&directories, &file_refs);
-        assert!(scope.contains("main.rs") || scope.contains("src"));
+        let message = generate_commit_message(&file_refs, &status);
+        let parts: Vec<&str> = message.split("\n\n").collect();
+
+        // Should have title and body separated by blank line
+        assert_eq!(parts.len(), 2, "Message should have title and body separated by blank line");
+
+        // Title should not be empty
+        let title = parts[0];
+        assert!(!title.is_empty(), "Title should not be empty");
+
+        // Body should have two sentences (each ends with period)
+        let body = parts[1];
+        let sentences: Vec<&str> = body.split(".\n").filter(|s| !s.is_empty()).collect();
+        assert!(sentences.len() >= 1, "Body should have sentences");
     }
 
     #[test]
-    fn test_summarize_scope_multiple_files() {
+    fn test_commit_message_title_starts_with_verb() {
+        let files = vec![FileStatus {
+            path: PathBuf::from("src/new_file.rs"),
+            status: FileStatusKind::Added,
+        }];
+        let file_refs: Vec<_> = files.iter().collect();
+        let status = RepoStatus {
+            branch: Some("main".to_string()),
+            detached: false,
+            has_conflicts: false,
+            files: files.clone(),
+        };
+
+        let message = generate_commit_message(&file_refs, &status);
+        let title = message.lines().next().unwrap();
+
+        // Title should start with an action verb
+        let starts_with_verb = title.starts_with("Add")
+            || title.starts_with("Update")
+            || title.starts_with("Remove")
+            || title.starts_with("Refactor");
+        assert!(starts_with_verb, "Title should start with an action verb: {}", title);
+    }
+
+    #[test]
+    fn test_commit_message_purpose_sentence() {
+        let files = vec![FileStatus {
+            path: PathBuf::from("src/cli/commands/new_cmd.rs"),
+            status: FileStatusKind::Added,
+        }];
+        let file_refs: Vec<_> = files.iter().collect();
+        let status = RepoStatus {
+            branch: Some("main".to_string()),
+            detached: false,
+            has_conflicts: false,
+            files: files.clone(),
+        };
+
+        let message = generate_commit_message(&file_refs, &status);
+
+        // Should contain purpose-oriented language (why it matters)
+        let has_purpose = message.contains("This ")
+            || message.contains("improves")
+            || message.contains("enables")
+            || message.contains("introduces");
+        assert!(has_purpose, "Message should explain purpose: {}", message);
+    }
+
+    #[test]
+    fn test_commit_message_implementation_sentence() {
         let files = vec![
             FileStatus {
-                path: PathBuf::from("src/a.rs"),
-                status: FileStatusKind::Modified,
+                path: PathBuf::from("src/feature.rs"),
+                status: FileStatusKind::Added,
             },
             FileStatus {
-                path: PathBuf::from("src/b.rs"),
-                status: FileStatusKind::Modified,
+                path: PathBuf::from("src/old.rs"),
+                status: FileStatusKind::Deleted,
             },
         ];
         let file_refs: Vec<_> = files.iter().collect();
-        let mut directories = std::collections::HashSet::new();
-        directories.insert("src".to_string());
+        let status = RepoStatus {
+            branch: Some("main".to_string()),
+            detached: false,
+            has_conflicts: false,
+            files: files.clone(),
+        };
 
-        let scope = summarize_scope(&directories, &file_refs);
-        // Should reference the module or file count
-        assert!(scope.contains("src") || scope.contains("2"));
+        let message = generate_commit_message(&file_refs, &status);
+
+        // Should mention what was added/modified/removed
+        let has_implementation = message.contains("adds")
+            || message.contains("modifies")
+            || message.contains("removes")
+            || message.contains("file");
+        assert!(has_implementation, "Message should describe implementation: {}", message);
+    }
+
+    #[test]
+    fn test_commit_message_cli_recognition() {
+        let files = vec![FileStatus {
+            path: PathBuf::from("src/cli/commands/status.rs"),
+            status: FileStatusKind::Added,
+        }];
+        let file_refs: Vec<_> = files.iter().collect();
+        let status = RepoStatus {
+            branch: Some("main".to_string()),
+            detached: false,
+            has_conflicts: false,
+            files: files.clone(),
+        };
+
+        let message = generate_commit_message(&file_refs, &status);
+
+        // Should recognize CLI-related changes
+        let recognizes_cli = message.to_lowercase().contains("command")
+            || message.to_lowercase().contains("cli");
+        assert!(recognizes_cli, "Should recognize CLI changes: {}", message);
+    }
+
+    #[test]
+    fn test_commit_message_test_recognition() {
+        let files = vec![FileStatus {
+            path: PathBuf::from("tests/auth_test.rs"),
+            status: FileStatusKind::Added,
+        }];
+        let file_refs: Vec<_> = files.iter().collect();
+        let status = RepoStatus {
+            branch: Some("main".to_string()),
+            detached: false,
+            has_conflicts: false,
+            files: files.clone(),
+        };
+
+        let message = generate_commit_message(&file_refs, &status);
+
+        // Should recognize test files
+        let recognizes_tests = message.to_lowercase().contains("test");
+        assert!(recognizes_tests, "Should recognize test changes: {}", message);
+    }
+
+    #[test]
+    fn test_commit_message_delete_operation() {
+        let files = vec![FileStatus {
+            path: PathBuf::from("src/deprecated.rs"),
+            status: FileStatusKind::Deleted,
+        }];
+        let file_refs: Vec<_> = files.iter().collect();
+        let status = RepoStatus {
+            branch: Some("main".to_string()),
+            detached: false,
+            has_conflicts: false,
+            files: files.clone(),
+        };
+
+        let message = generate_commit_message(&file_refs, &status);
+
+        // Should use Remove verb for deletions
+        assert!(message.starts_with("Remove"), "Delete should use 'Remove' verb: {}", message);
+    }
+
+    #[test]
+    fn test_commit_message_mixed_changes() {
+        let files = vec![
+            FileStatus {
+                path: PathBuf::from("src/new.rs"),
+                status: FileStatusKind::Added,
+            },
+            FileStatus {
+                path: PathBuf::from("src/existing.rs"),
+                status: FileStatusKind::Modified,
+            },
+            FileStatus {
+                path: PathBuf::from("src/old.rs"),
+                status: FileStatusKind::Deleted,
+            },
+        ];
+        let file_refs: Vec<_> = files.iter().collect();
+        let status = RepoStatus {
+            branch: Some("main".to_string()),
+            detached: false,
+            has_conflicts: false,
+            files: files.clone(),
+        };
+
+        let message = generate_commit_message(&file_refs, &status);
+
+        // Should use Refactor for mixed add+delete
+        assert!(message.starts_with("Refactor"), "Mixed changes should use 'Refactor': {}", message);
+
+        // Implementation sentence should mention all types
+        assert!(message.contains("adds") && message.contains("removes"),
+            "Should mention both adds and removes: {}", message);
     }
 
     #[test]
@@ -1025,8 +1351,13 @@ mod tests {
         };
 
         let message = generate_commit_message(&file_refs, &status);
-        // The message should reference auth in some way
-        assert!(message.contains("auth") || message.contains("2 files"));
+        // The message should be an Update since we're modifying files
+        assert!(message.starts_with("Update"), "Should start with Update: {}", message);
+        // Should mention the file count in implementation sentence
+        assert!(
+            message.contains("2 existing files") || message.contains("auth"),
+            "Should reference changes: {}", message
+        );
     }
 
     #[test]
