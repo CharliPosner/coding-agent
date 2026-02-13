@@ -1,71 +1,21 @@
-use schemars::{schema_for, JsonSchema};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+// State machine modules
+pub mod machine;
+pub mod state;
+pub mod types;
+
+// Re-export commonly used types
+pub use machine::StateMachine;
+pub use state::{AgentAction, AgentEvent, AgentState, ToolCall, ToolExecutionStatus};
+pub use types::{
+    generate_schema, ContentBlock, Message, MessageRequest, MessageResponse, Tool,
+    ToolDefinition, ToolFunction,
+};
+
 use std::io::{self, BufRead, Write};
 
 // ============================================================================
-// API Types - Request/Response structures for Anthropic Messages API
+// Agent - Legacy API (wraps the state machine for backward compatibility)
 // ============================================================================
-
-#[derive(Debug, Serialize)]
-pub struct MessageRequest {
-    pub model: String,
-    pub max_tokens: u32,
-    pub messages: Vec<Message>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<Tool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
-    pub role: String,
-    pub content: Vec<ContentBlock>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ContentBlock {
-    Text {
-        text: String,
-    },
-    ToolUse {
-        id: String,
-        name: String,
-        input: Value,
-    },
-    ToolResult {
-        tool_use_id: String,
-        content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        is_error: Option<bool>,
-    },
-}
-
-#[derive(Debug, Deserialize)]
-pub struct MessageResponse {
-    pub content: Vec<ContentBlock>,
-    pub stop_reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Tool {
-    pub name: String,
-    pub description: String,
-    pub input_schema: Value,
-}
-
-// ============================================================================
-// Agent Types - Tool definitions and agent struct
-// ============================================================================
-
-pub type ToolFunction = fn(Value) -> Result<String, String>;
-
-pub struct ToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub input_schema: Value,
-    pub function: ToolFunction,
-}
 
 pub struct Agent {
     api_key: String,
@@ -117,19 +67,11 @@ impl Agent {
             }
 
             // Add user message to conversation
-            conversation.push(Message {
-                role: "user".to_string(),
-                content: vec![ContentBlock::Text {
-                    text: input.to_string(),
-                }],
-            });
+            conversation.push(Message::user(input));
 
             // Call API
             let response = self.call_api(&conversation)?;
-            conversation.push(Message {
-                role: "assistant".to_string(),
-                content: response.content.clone(),
-            });
+            conversation.push(Message::assistant(response.content.clone()));
 
             // Process response and handle tool use loop
             let mut current_response = response;
@@ -177,10 +119,7 @@ impl Agent {
                 });
 
                 current_response = self.call_api(&conversation)?;
-                conversation.push(Message {
-                    role: "assistant".to_string(),
-                    content: current_response.content.clone(),
-                });
+                conversation.push(Message::assistant(current_response.content.clone()));
             }
         }
 
@@ -190,7 +129,7 @@ impl Agent {
         Ok(())
     }
 
-    fn execute_tool(&self, name: &str, input: Value) -> Result<String, String> {
+    fn execute_tool(&self, name: &str, input: serde_json::Value) -> Result<String, String> {
         for tool in &self.tools {
             if tool.name == name {
                 return (tool.function)(input);
@@ -244,13 +183,4 @@ impl Agent {
 
         Ok(msg_response)
     }
-}
-
-// ============================================================================
-// Helper - Generate JSON Schema from a struct
-// ============================================================================
-
-pub fn generate_schema<T: JsonSchema>() -> Value {
-    let schema = schema_for!(T);
-    serde_json::to_value(schema).unwrap_or(Value::Null)
 }
