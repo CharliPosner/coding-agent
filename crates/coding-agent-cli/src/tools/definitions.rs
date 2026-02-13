@@ -4,6 +4,7 @@
 //! Each tool has a JSON schema for input validation and a function to execute the tool.
 
 use coding_agent_core::{generate_schema, Tool, ToolDefinition};
+use crate::permissions::{PermissionChecker, PermissionDecision};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
@@ -428,6 +429,76 @@ pub fn execute_tool(definitions: &[ToolDefinition], name: &str, input: Value) ->
         }
     }
     Err(format!("Unknown tool: {}", name))
+}
+
+/// Execute a tool with permission checking for write operations.
+///
+/// This wraps `execute_tool` with permission checking for write/modify operations.
+/// Read operations and bash commands are executed without permission checks.
+pub fn execute_tool_with_permissions(
+    definitions: &[ToolDefinition],
+    name: &str,
+    input: Value,
+    permission_checker: Option<&PermissionChecker>,
+) -> Result<String, String> {
+    // If no permission checker provided, execute without checks
+    let Some(checker) = permission_checker else {
+        return execute_tool(definitions, name, input);
+    };
+
+    // Check if this tool requires permission checking
+    match name {
+        "write_file" => {
+            // Extract path from input
+            let path_str = input
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "write_file requires 'path' parameter".to_string())?;
+            let path = Path::new(path_str);
+
+            // Check write permission
+            match checker.check_write(path) {
+                PermissionDecision::Allowed => execute_tool(definitions, name, input),
+                PermissionDecision::Denied => {
+                    Err(format!("Permission denied: Cannot write to {}", path_str))
+                }
+                PermissionDecision::NeedsPrompt => {
+                    Err(format!(
+                        "Permission required: Writing to {} requires confirmation",
+                        path_str
+                    ))
+                }
+            }
+        }
+        "edit_file" => {
+            // Extract path from input
+            let path_str = input
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "edit_file requires 'path' parameter".to_string())?;
+            let path = Path::new(path_str);
+
+            // Check write permission (edit_file can create or modify)
+            match checker.check_write(path) {
+                PermissionDecision::Allowed => execute_tool(definitions, name, input),
+                PermissionDecision::Denied => {
+                    Err(format!("Permission denied: Cannot edit {}", path_str))
+                }
+                PermissionDecision::NeedsPrompt => {
+                    Err(format!(
+                        "Permission required: Editing {} requires confirmation",
+                        path_str
+                    ))
+                }
+            }
+        }
+        // Other tools don't require permission checks
+        // - read_file: reads are always allowed per spec
+        // - list_files: only lists, doesn't modify
+        // - bash: executing commands is a conscious decision
+        // - code_search: only searches, doesn't modify
+        _ => execute_tool(definitions, name, input),
+    }
 }
 
 #[cfg(test)]
@@ -1128,5 +1199,267 @@ mod tests {
         let output = result.unwrap();
         // Should indicate truncation
         assert!(output.contains("showing first 50 of 60 matches"));
+    }
+
+    // ============================================================================
+    // Permission Checking Tests
+    // ============================================================================
+
+    #[test]
+    fn test_execute_tool_with_permissions_no_checker() {
+        // Without a permission checker, should execute normally
+        let definitions = create_tool_definitions();
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "content": "test content"
+        });
+
+        let result = execute_tool_with_permissions(&definitions, "write_file", input, None);
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("Successfully wrote"));
+    }
+
+    #[test]
+    fn test_write_file_with_trusted_path() {
+        use crate::permissions::{PermissionChecker, TrustedPaths};
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+
+        // Create permission checker with trusted path
+        let trusted = TrustedPaths::new(&[dir.path().to_str().unwrap().to_string()])
+            .expect("Should create trusted paths");
+        let checker = PermissionChecker::new(trusted, true);
+
+        let definitions = create_tool_definitions();
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "content": "test content"
+        });
+
+        // Should succeed because path is trusted
+        let result = execute_tool_with_permissions(&definitions, "write_file", input, Some(&checker));
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("Successfully wrote"));
+    }
+
+    #[test]
+    fn test_write_file_with_untrusted_path_needs_prompt() {
+        use crate::permissions::{PermissionChecker, TrustedPaths};
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+
+        // Create permission checker with NO trusted paths
+        let trusted = TrustedPaths::new(&[]).expect("Should create trusted paths");
+        let checker = PermissionChecker::new(trusted, true);
+
+        let definitions = create_tool_definitions();
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "content": "test content"
+        });
+
+        // Should fail because path is not trusted
+        let result = execute_tool_with_permissions(&definitions, "write_file", input, Some(&checker));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Permission required"));
+    }
+
+    #[test]
+    fn test_edit_file_with_trusted_path() {
+        use crate::permissions::{PermissionChecker, TrustedPaths};
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        fs::write(&file_path, "Hello, World!").unwrap();
+
+        // Create permission checker with trusted path
+        let trusted = TrustedPaths::new(&[dir.path().to_str().unwrap().to_string()])
+            .expect("Should create trusted paths");
+        let checker = PermissionChecker::new(trusted, true);
+
+        let definitions = create_tool_definitions();
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "old_str": "World",
+            "new_str": "Rust"
+        });
+
+        // Should succeed because path is trusted
+        let result = execute_tool_with_permissions(&definitions, "edit_file", input, Some(&checker));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "OK");
+    }
+
+    #[test]
+    fn test_edit_file_with_untrusted_path_needs_prompt() {
+        use crate::permissions::{PermissionChecker, TrustedPaths};
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+
+        // Create permission checker with NO trusted paths
+        let trusted = TrustedPaths::new(&[]).expect("Should create trusted paths");
+        let checker = PermissionChecker::new(trusted, true);
+
+        let definitions = create_tool_definitions();
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "old_str": "",
+            "new_str": "content"
+        });
+
+        // Should fail because path is not trusted
+        let result = execute_tool_with_permissions(&definitions, "edit_file", input, Some(&checker));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Permission required"));
+    }
+
+    #[test]
+    fn test_read_file_no_permission_check() {
+        use crate::permissions::{PermissionChecker, TrustedPaths};
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        fs::write(&file_path, "test content").unwrap();
+
+        // Create permission checker with NO trusted paths
+        let trusted = TrustedPaths::new(&[]).expect("Should create trusted paths");
+        let checker = PermissionChecker::new(trusted, true);
+
+        let definitions = create_tool_definitions();
+        let input = json!({
+            "path": file_path.to_str().unwrap()
+        });
+
+        // Should succeed even with untrusted path (reads are always allowed)
+        let result = execute_tool_with_permissions(&definitions, "read_file", input, Some(&checker));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "test content");
+    }
+
+    #[test]
+    fn test_bash_no_permission_check() {
+        use crate::permissions::{PermissionChecker, TrustedPaths};
+
+        // Create permission checker with NO trusted paths
+        let trusted = TrustedPaths::new(&[]).expect("Should create trusted paths");
+        let checker = PermissionChecker::new(trusted, true);
+
+        let definitions = create_tool_definitions();
+        let input = json!({
+            "command": "echo 'test'"
+        });
+
+        // Should succeed (bash commands don't require permission checks)
+        let result = execute_tool_with_permissions(&definitions, "bash", input, Some(&checker));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "test");
+    }
+
+    #[test]
+    fn test_list_files_no_permission_check() {
+        use crate::permissions::{PermissionChecker, TrustedPaths};
+
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("file1.txt"), "").unwrap();
+
+        // Create permission checker with NO trusted paths
+        let trusted = TrustedPaths::new(&[]).expect("Should create trusted paths");
+        let checker = PermissionChecker::new(trusted, true);
+
+        let definitions = create_tool_definitions();
+        let input = json!({
+            "path": dir.path().to_str().unwrap()
+        });
+
+        // Should succeed (list_files doesn't require permission checks)
+        let result = execute_tool_with_permissions(&definitions, "list_files", input, Some(&checker));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_code_search_no_permission_check() {
+        use crate::permissions::{PermissionChecker, TrustedPaths};
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        fs::write(&file_path, "test content").unwrap();
+
+        // Create permission checker with NO trusted paths
+        let trusted = TrustedPaths::new(&[]).expect("Should create trusted paths");
+        let checker = PermissionChecker::new(trusted, true);
+
+        let definitions = create_tool_definitions();
+        let input = json!({
+            "pattern": "content",
+            "path": dir.path().to_str().unwrap()
+        });
+
+        // Should succeed (code_search doesn't require permission checks)
+        let result = execute_tool_with_permissions(&definitions, "code_search", input, Some(&checker));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_write_file_permission_denied() {
+        use crate::permissions::{OperationType, PermissionChecker, PermissionDecision, TrustedPaths};
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+
+        // Create permission checker with NO trusted paths
+        let trusted = TrustedPaths::new(&[]).expect("Should create trusted paths");
+        let mut checker = PermissionChecker::new(trusted, true);
+
+        // Record a "denied" decision for this path
+        checker.record_decision(&file_path, OperationType::Write, PermissionDecision::Denied);
+
+        let definitions = create_tool_definitions();
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "content": "test content"
+        });
+
+        // Should fail with "Permission denied" (not "required")
+        let result = execute_tool_with_permissions(&definitions, "write_file", input, Some(&checker));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Permission denied"));
+        assert!(!err.contains("required"));
+    }
+
+    #[test]
+    fn test_edit_file_permission_denied() {
+        use crate::permissions::{OperationType, PermissionChecker, PermissionDecision, TrustedPaths};
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        fs::write(&file_path, "original").unwrap();
+
+        // Create permission checker with NO trusted paths
+        let trusted = TrustedPaths::new(&[]).expect("Should create trusted paths");
+        let mut checker = PermissionChecker::new(trusted, true);
+
+        // Record a "denied" decision for this path
+        checker.record_decision(&file_path, OperationType::Modify, PermissionDecision::Denied);
+
+        let definitions = create_tool_definitions();
+        let input = json!({
+            "path": file_path.to_str().unwrap(),
+            "old_str": "original",
+            "new_str": "modified"
+        });
+
+        // Should fail with "Permission denied" (not "required")
+        let result = execute_tool_with_permissions(&definitions, "edit_file", input, Some(&checker));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Permission denied"));
+        assert!(!err.contains("required"));
     }
 }

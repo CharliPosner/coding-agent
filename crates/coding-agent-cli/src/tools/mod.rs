@@ -27,4 +27,4 @@ pub use regression_tests::{
     generate_regression_test, generate_test_from_diagnostic, write_regression_test,
     RegressionTest, RegressionTestConfig,
 };
-pub use definitions::{create_tool_definitions, execute_tool, tool_definitions_to_api};
+pub use definitions::{create_tool_definitions, execute_tool, execute_tool_with_permissions, tool_definitions_to_api};

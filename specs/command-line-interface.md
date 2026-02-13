@@ -1090,7 +1090,7 @@ src/
 - [x] `code_search` tool - Search codebase with ripgrep patterns
 - [x] Tool result display in REPL (formatted, syntax highlighted)
 - [x] Tool call visibility (show "Reading src/main.rs..." etc.)
-- [ ] Permission checks before write operations (use Phase 6 system)
+- [x] Permission checks before write operations (use Phase 6 system)
 
 **Files to modify:**
 ```

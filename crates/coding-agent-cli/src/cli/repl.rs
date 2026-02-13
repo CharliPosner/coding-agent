@@ -7,8 +7,9 @@ use super::input::{InputHandler, InputResult};
 use super::terminal::Terminal;
 use crate::config::Config;
 use crate::integrations::{Session, SessionManager};
+use crate::permissions::{PermissionChecker, TrustedPaths};
 use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
-use crate::tools::{create_tool_definitions, execute_tool, tool_definitions_to_api};
+use crate::tools::{create_tool_definitions, execute_tool_with_permissions, tool_definitions_to_api};
 use crate::ui::{ContextBar, ToolResultFormatter};
 use coding_agent_core::{ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition};
 use std::io::Write;
@@ -76,11 +77,18 @@ pub struct Repl {
     tools_api: Vec<Tool>,
     /// Tool result formatter for displaying results
     tool_result_formatter: ToolResultFormatter,
+    /// Permission checker for file operations
+    permission_checker: Option<PermissionChecker>,
 }
 
 impl Repl {
     /// Create a new REPL with the given configuration
     pub fn new(config: ReplConfig) -> Self {
+        Self::new_with_app_config(config, None)
+    }
+
+    /// Create a new REPL with the given configuration and app config
+    pub fn new_with_app_config(config: ReplConfig, app_config: Option<&Config>) -> Self {
         // Load .env file if present
         let _ = dotenvy::dotenv();
 
@@ -115,6 +123,13 @@ impl Repl {
         // Initialize tool result formatter
         let tool_result_formatter = ToolResultFormatter::new();
 
+        // Initialize permission checker if app config is provided
+        let permission_checker = app_config.map(|cfg| {
+            let trusted_paths = TrustedPaths::new(&cfg.permissions.trusted_paths)
+                .unwrap_or_else(|_| TrustedPaths::new(&[]).unwrap());
+            PermissionChecker::new(trusted_paths, cfg.permissions.auto_read)
+        });
+
         Self {
             config,
             registry: CommandRegistry::with_defaults(),
@@ -129,6 +144,7 @@ impl Repl {
             tool_definitions,
             tools_api,
             tool_result_formatter,
+            permission_checker,
         }
     }
 
@@ -322,8 +338,13 @@ impl Repl {
                 // Display tool call visibility
                 self.print_line(&format!("\x1b[33m● {}\x1b[0m", self.format_tool_call(&name, &input)));
 
-                // Execute the tool
-                let result = execute_tool(&self.tool_definitions, &name, input);
+                // Execute the tool with permission checking
+                let result = execute_tool_with_permissions(
+                    &self.tool_definitions,
+                    &name,
+                    input,
+                    self.permission_checker.as_ref(),
+                );
 
                 match result {
                     Ok(output) => {
