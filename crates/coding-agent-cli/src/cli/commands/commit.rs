@@ -6,7 +6,10 @@
 
 use super::{Command, CommandContext, CommandResult};
 use crate::integrations::git::{FileStatus, FileStatusKind, GitError, GitRepo, RepoStatus};
-use crate::ui::{FileEntry, FilePicker, FilePickerResult};
+use crate::ui::{
+    edit_commit_message, CommitPreview, CommitPreviewResult, FileEntry, FilePicker,
+    FilePickerResult,
+};
 use git2::{Repository, Signature};
 
 pub struct CommitCommand;
@@ -197,10 +200,15 @@ fn execute_auto_commit(
         match file.status {
             FileStatusKind::Deleted => {
                 if let Err(e) = index.remove_path(path) {
-                    return CommandResult::Error(format!("Failed to stage deletion of {:?}: {}", path, e));
+                    return CommandResult::Error(format!(
+                        "Failed to stage deletion of {:?}: {}",
+                        path, e
+                    ));
                 }
             }
-            FileStatusKind::Untracked | FileStatusKind::Modified | FileStatusKind::StagedWithChanges => {
+            FileStatusKind::Untracked
+            | FileStatusKind::Modified
+            | FileStatusKind::StagedWithChanges => {
                 if let Err(e) = index.add_path(path) {
                     return CommandResult::Error(format!("Failed to stage {:?}: {}", path, e));
                 }
@@ -215,10 +223,29 @@ fn execute_auto_commit(
         return CommandResult::Error(format!("Failed to write index: {}", e));
     }
 
-    // Generate commit message
-    let message = match custom_message {
+    // Generate commit message (or use custom)
+    let initial_message = match custom_message {
         Some(msg) => msg.to_string(),
         None => generate_commit_message(&files_to_stage, status),
+    };
+
+    // Show preview and get final message (skip preview if custom message provided)
+    let final_message = if custom_message.is_some() {
+        initial_message
+    } else {
+        // Build file list for preview
+        let file_paths: Vec<String> = files_to_stage
+            .iter()
+            .map(|f| format!("{} {}", f.status.indicator(), f.path.display()))
+            .collect();
+
+        let preview = CommitPreview::new(initial_message.clone(), file_paths);
+
+        match run_commit_preview_loop(preview) {
+            Ok(Some(msg)) => msg,
+            Ok(None) => return CommandResult::Output("Commit cancelled.".to_string()),
+            Err(e) => return CommandResult::Error(format!("Preview error: {}", e)),
+        }
     };
 
     // Create the commit
@@ -238,19 +265,22 @@ fn execute_auto_commit(
             // Try to create a default signature if git config doesn't have user info
             match Signature::now("coding-agent", "coding-agent@local") {
                 Ok(s) => s,
-                Err(e) => return CommandResult::Error(format!("Failed to create signature: {}. Configure git with 'git config user.name' and 'git config user.email'.", e)),
+                Err(e) => {
+                    return CommandResult::Error(format!(
+                        "Failed to create signature: {}. Configure git with 'git config user.name' and 'git config user.email'.",
+                        e
+                    ))
+                }
             }
         }
     };
 
     // Get parent commit (if any)
     let parent = match repo.head() {
-        Ok(head) => {
-            match head.peel_to_commit() {
-                Ok(commit) => Some(commit),
-                Err(_) => None,
-            }
-        }
+        Ok(head) => match head.peel_to_commit() {
+            Ok(commit) => Some(commit),
+            Err(_) => None,
+        },
         Err(_) => None, // Initial commit
     };
 
@@ -260,7 +290,7 @@ fn execute_auto_commit(
         Some("HEAD"),
         &signature,
         &signature,
-        &message,
+        &final_message,
         &tree,
         &parents,
     ) {
@@ -271,18 +301,48 @@ fn execute_auto_commit(
 
             // Build output
             let mut output = String::new();
-            output.push_str(&format!("✓ Committed {} {} [{}]\n\n", file_count, file_word, short_id));
-            output.push_str(&format!("{}\n", message));
+            output.push_str(&format!(
+                "✓ Committed {} {} [{}]\n\n",
+                file_count, file_word, short_id
+            ));
+            output.push_str(&format!("{}\n", final_message));
 
             // List committed files
             output.push_str("\nFiles committed:\n");
             for file in files_to_stage {
-                output.push_str(&format!("  {} {}\n", file.status.indicator(), file.path.display()));
+                output.push_str(&format!(
+                    "  {} {}\n",
+                    file.status.indicator(),
+                    file.path.display()
+                ));
             }
 
             CommandResult::Output(output)
         }
         Err(e) => CommandResult::Error(format!("Failed to create commit: {}", e)),
+    }
+}
+
+/// Run the commit preview loop, allowing the user to edit the message
+fn run_commit_preview_loop(mut preview: CommitPreview) -> std::io::Result<Option<String>> {
+    loop {
+        match preview.run()? {
+            CommitPreviewResult::Confirmed(msg) => return Ok(Some(msg)),
+            CommitPreviewResult::Cancelled => return Ok(None),
+            CommitPreviewResult::Edit => {
+                // Open editor
+                match edit_commit_message(preview.message())? {
+                    Some(edited_msg) => {
+                        preview.set_message(edited_msg);
+                        // Loop back to show the preview again
+                    }
+                    None => {
+                        // User cancelled the edit (empty message)
+                        return Ok(None);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -393,10 +453,29 @@ fn execute_pick_commit(
         return CommandResult::Error(format!("Failed to write index: {}", e));
     }
 
-    // Generate commit message
-    let message = match custom_message {
+    // Generate commit message (or use custom)
+    let initial_message = match custom_message {
         Some(msg) => msg.to_string(),
         None => generate_commit_message(&files_to_commit, status),
+    };
+
+    // Show preview and get final message (skip preview if custom message provided)
+    let final_message = if custom_message.is_some() {
+        initial_message
+    } else {
+        // Build file list for preview
+        let file_paths: Vec<String> = files_to_commit
+            .iter()
+            .map(|f| format!("{} {}", f.status.indicator(), f.path.display()))
+            .collect();
+
+        let preview = CommitPreview::new(initial_message.clone(), file_paths);
+
+        match run_commit_preview_loop(preview) {
+            Ok(Some(msg)) => msg,
+            Ok(None) => return CommandResult::Output("Commit cancelled.".to_string()),
+            Err(e) => return CommandResult::Error(format!("Preview error: {}", e)),
+        }
     };
 
     // Create the commit
@@ -437,7 +516,7 @@ fn execute_pick_commit(
         Some("HEAD"),
         &signature,
         &signature,
-        &message,
+        &final_message,
         &tree,
         &parents,
     ) {
@@ -451,7 +530,7 @@ fn execute_pick_commit(
                 "✓ Committed {} {} [{}]\n\n",
                 file_count, file_word, short_id
             ));
-            output.push_str(&format!("{}\n", message));
+            output.push_str(&format!("{}\n", final_message));
 
             output.push_str("\nFiles committed:\n");
             for file in files_to_commit {

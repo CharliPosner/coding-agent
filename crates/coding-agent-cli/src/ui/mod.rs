@@ -2,6 +2,7 @@
 //!
 //! This module provides styled output, spinners, progress bars, and themes.
 
+pub mod commit_preview;
 pub mod components;
 pub mod context_bar;
 pub mod file_picker;
@@ -12,6 +13,7 @@ pub mod syntax;
 pub mod theme;
 pub mod tool_spinner;
 
+pub use commit_preview::{edit_commit_message, CommitPreview, CommitPreviewResult};
 pub use components::MessageBox;
 pub use context_bar::ContextBar;
 pub use file_picker::{FileEntry, FilePicker, FilePickerResult};
