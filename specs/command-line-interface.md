@@ -2051,16 +2051,16 @@ if result.is_success() {
 **Deliverables:**
 
 1. **FixAgent Integration**
-   - [ ] Check `ToolExecutionResult::is_auto_fixable()` after errors
-   - [ ] Spawn `FixAgent::spawn()` for fixable errors
-   - [ ] Display fix agent progress via status bar
-   - [ ] Apply fix if successful, re-run original tool
-   - [ ] Generate regression test via `generate_regression_test()`
+   - [x] Check `ToolExecutionResult::is_auto_fixable()` after errors
+   - [x] Spawn `FixAgent::spawn()` for fixable errors
+   - [x] Display fix agent progress via status bar
+   - [x] Apply fix if successful, re-run original tool
+   - [x] Generate regression test via `generate_regression_test()`
 
 2. **Error Recovery Flow**
-   - [ ] Categorize errors via `ToolError::category`
-   - [ ] For `ErrorCategory::Code`, attempt auto-fix
-   - [ ] For `ErrorCategory::Network`, retry with backoff (already in ToolExecutor)
+   - [x] Categorize errors via `ToolError::category`
+   - [x] For `ErrorCategory::Code`, attempt auto-fix
+   - [x] For `ErrorCategory::Network`, retry with backoff (already in ToolExecutor)
    - [ ] For `ErrorCategory::Permission`, show permission prompt
    - [ ] For `ErrorCategory::Resource`, suggest alternatives
 

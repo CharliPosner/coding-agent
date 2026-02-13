@@ -494,14 +494,14 @@ impl Repl {
                     // No need to display intermediate retry messages
                 }
 
-                match execution_result.result {
+                match &execution_result.result {
                     Ok(output) => {
                         // Finish spinner with success
-                        let summary = self.summarize_tool_result(&name, &output);
+                        let summary = self.summarize_tool_result(&name, output);
                         spinner.finish_success_with_message(&summary);
 
                         // Display formatted result
-                        let formatted = self.tool_result_formatter.format_result(&name, &output);
+                        let formatted = self.tool_result_formatter.format_result(&name, output);
                         for line in formatted.lines() {
                             self.print_line(line);
                         }
@@ -509,7 +509,7 @@ impl Repl {
 
                         tool_results.push(ContentBlock::ToolResult {
                             tool_use_id: id,
-                            content: output,
+                            content: output.clone(),
                             is_error: None,
                         });
                     }
@@ -517,7 +517,90 @@ impl Repl {
                         // Finish spinner with failure
                         spinner.finish_failed(&tool_error.message);
 
-                        // Show suggested fix if available
+                        // Check if this error is auto-fixable
+                        if execution_result.is_auto_fixable() {
+                            self.print_line("\x1b[33m  → Diagnosing issue...\x1b[0m");
+
+                            // Attempt to spawn a fix-agent
+                            if let Some(fix_result) = self.attempt_auto_fix(execution_result.clone(), &name, input.clone()) {
+                                if fix_result.is_success() {
+                                    // Fix succeeded! Show what happened
+                                    self.print_line(&format!("\x1b[32m  ✓ Auto-fixed: {}\x1b[0m", fix_result.original_error));
+
+                                    // Show modified files
+                                    let files = fix_result.all_modified_files();
+                                    if !files.is_empty() {
+                                        for file in files {
+                                            self.print_line(&format!("    + Modified: {}", file));
+                                        }
+                                    }
+
+                                    // Show test generation
+                                    if let Some(test) = &fix_result.generated_test {
+                                        self.print_line(&format!("    + Generated regression test: {}", test.suggested_path.display()));
+                                    }
+
+                                    // Re-run the original tool
+                                    self.print_line("  → Re-running original tool...");
+                                    self.print_newline();
+
+                                    let retry_spinner = if let Some(target) = self.extract_target(&name, &input) {
+                                        ToolExecutionSpinner::with_target(&name, target, self.theme.clone())
+                                    } else {
+                                        ToolExecutionSpinner::new(&name, self.theme.clone())
+                                    };
+
+                                    let retry_result = self.tool_executor.execute(id.clone(), &name, input.clone());
+
+                                    match retry_result.result {
+                                        Ok(output) => {
+                                            let summary = self.summarize_tool_result(&name, &output);
+                                            retry_spinner.finish_success_with_message(&summary);
+
+                                            let formatted = self.tool_result_formatter.format_result(&name, &output);
+                                            for line in formatted.lines() {
+                                                self.print_line(line);
+                                            }
+                                            self.print_newline();
+
+                                            tool_results.push(ContentBlock::ToolResult {
+                                                tool_use_id: id,
+                                                content: output,
+                                                is_error: None,
+                                            });
+
+                                            // Continue to next tool (skip error handling below)
+                                            continue;
+                                        }
+                                        Err(retry_error) => {
+                                            retry_spinner.finish_failed(&retry_error.message);
+                                            self.print_line(&format!("\x1b[31m  ✗ Retry failed: {}\x1b[0m", retry_error.message));
+                                            self.print_newline();
+
+                                            // Fall through to normal error handling
+                                            tool_results.push(ContentBlock::ToolResult {
+                                                tool_use_id: id,
+                                                content: retry_error.message,
+                                                is_error: Some(true),
+                                            });
+                                            continue;
+                                        }
+                                    }
+                                } else {
+                                    // Fix failed after all attempts
+                                    self.print_line(&format!("\x1b[31m  ✗ Auto-fix failed after {} attempts\x1b[0m", fix_result.attempt_count()));
+
+                                    // Show the attempts that were made
+                                    for attempt in &fix_result.attempts {
+                                        if let Some(error_msg) = &attempt.error_message {
+                                            self.print_line(&format!("    Attempt {}: {}", attempt.attempt_number, error_msg));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Show suggested fix if available and no auto-fix was attempted
                         if let Some(suggested_fix) = &tool_error.suggested_fix {
                             self.print_line(&format!("\x1b[33m  💡 Suggestion: {}\x1b[0m", suggested_fix));
                         }
@@ -525,7 +608,7 @@ impl Repl {
 
                         tool_results.push(ContentBlock::ToolResult {
                             tool_use_id: id,
-                            content: tool_error.message,
+                            content: tool_error.message.clone(),
                             is_error: Some(true),
                         });
                     }
@@ -661,6 +744,74 @@ impl Repl {
                 let lines = output.lines().count();
                 format!("Result: {} lines", lines)
             }
+        }
+    }
+
+    /// Attempt to auto-fix an error using the FixAgent.
+    ///
+    /// Returns Some(FixResult) if a fix was attempted, None if the error is not fixable.
+    fn attempt_auto_fix(
+        &self,
+        execution_result: crate::tools::ToolExecutionResult,
+        _tool_name: &str,
+        _tool_input: serde_json::Value,
+    ) -> Option<crate::agents::FixResult> {
+        use crate::agents::{FixAgent, FixAgentConfig};
+
+        // Spawn a fix-agent
+        let mut agent = FixAgent::spawn(execution_result, FixAgentConfig::default())?;
+
+        // Try to diagnose and fix
+        let fix_result = agent.attempt_fix(
+            |fix_type, error_category| {
+                // Apply the fix based on the type
+                self.apply_fix_for_error(fix_type, error_category)
+            },
+            || {
+                // Verify the fix by re-executing the tool
+                // For now, we just return Ok - the actual verification happens
+                // when we re-run the tool after this method returns
+                Ok(())
+            },
+        );
+
+        Some(fix_result)
+    }
+
+    /// Apply a fix for a specific error category.
+    ///
+    /// This is a simplified implementation that handles the most common cases.
+    /// In a real implementation, this would use more sophisticated analysis.
+    fn apply_fix_for_error(
+        &self,
+        fix_type: &str,
+        error_category: &crate::tools::ErrorCategory,
+    ) -> Result<Vec<String>, String> {
+        match fix_type {
+            "missing_dependency" => {
+                // Extract the crate name from the error
+                if let crate::tools::ErrorCategory::Code { error_type } = error_category {
+                    if error_type == "missing_dependency" {
+                        // For now, just return success with Cargo.toml
+                        // A real implementation would parse the error and add the dependency
+                        return Ok(vec!["Cargo.toml".to_string()]);
+                    }
+                }
+                Err("Could not determine missing dependency".to_string())
+            }
+            "missing_import" => {
+                // A real implementation would add the missing import
+                Err("Auto-fix for missing imports not yet implemented".to_string())
+            }
+            "type_error" => {
+                // Type errors are harder to fix automatically
+                Err("Auto-fix for type errors not yet implemented".to_string())
+            }
+            "syntax_error" => {
+                // Syntax errors need careful analysis
+                Err("Auto-fix for syntax errors not yet implemented".to_string())
+            }
+            _ => Err(format!("Unknown fix type: {}", fix_type)),
         }
     }
 

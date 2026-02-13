@@ -1,7 +1,6 @@
 //! The /status command - shows active tasks and running agents
 
 use super::{Command, CommandContext, CommandResult};
-use crate::agents::status::AgentState;
 
 pub struct StatusCommand;
 
