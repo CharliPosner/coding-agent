@@ -1942,6 +1942,453 @@ jobs:
 
 ---
 
+### Phase 14: Integration of Advanced Features
+
+**Goal:** Wire up all implemented-but-unused modules to eliminate compiler warnings and activate advanced features.
+
+**Context:** Phases 1-13 implemented all the code for the CLI specification. However, many advanced features were built as complete modules but not yet integrated into the main execution flow. This phase systematically wires everything together.
+
+---
+
+#### 14.1: Core Infrastructure Integration
+
+**Deliverables:**
+
+1. **AgentManager Integration**
+   - [x] Create `AgentManager` instance in `Repl::new()`
+   - [x] Store as `Arc<AgentManager>` field in `Repl` struct
+   - [x] Pass to `CommandContext` so all commands can access it
+   - [x] Update `/status` command to query and display agent status
+
+2. **Permission System Activation**
+   - [ ] Wire `PermissionPrompt` into `PermissionChecker`
+   - [ ] When write operation hits untrusted path, show interactive prompt
+   - [ ] Handle "Always" responses by updating config file
+   - [ ] Handle "Never" responses by caching in session permissions
+
+**Files to modify:**
+```
+src/cli/repl.rs              # Add agent_manager field
+src/tools/definitions.rs     # Pass permission checker through
+src/permissions/checker.rs   # Call PermissionPrompt::prompt()
+```
+
+**Tests:**
+| Test | What it verifies |
+|------|------------------|
+| `test_agent_manager_initialized` | AgentManager exists in REPL |
+| `test_status_shows_active_agents` | /status displays running agents |
+| `test_permission_prompt_untrusted` | Prompt shown for untrusted writes |
+| `test_permission_always_saves` | "Always" updates config |
+
+**Stopping condition:**
+```
+✓ AgentManager successfully initialized
+✓ /status shows "No active agents" on fresh start
+✓ Permission prompts appear for untrusted file writes
+✓ Config updated when "Always" selected
+```
+
+---
+
+#### 14.2: Tool Execution Enhancement
+
+**Deliverables:**
+
+1. **ToolExecutor Integration**
+   - [ ] Create `ToolExecutor` instance in `Repl::new()`
+   - [ ] Register all tools (read, write, edit, list, bash, search)
+   - [ ] Replace `execute_tool_with_permissions()` calls with `executor.execute()`
+   - [ ] Handle `ToolExecutionResult` with retry logic
+   - [ ] Display retry attempts to user
+
+2. **ToolExecutionSpinner Integration**
+   - [ ] Replace simple "● Running..." with `ToolExecutionSpinner::with_target()`
+   - [ ] Show spinner during tool execution
+   - [ ] Call `finish_success()` or `finish_failed()` on completion
+   - [ ] Display elapsed time for long operations
+
+**Implementation approach:**
+
+```rust
+// In process_conversation(), replace:
+self.print_line(&format!("● {}", self.format_tool_call(&name, &input)));
+let result = execute_tool_with_permissions(...);
+
+// With:
+let spinner = ToolExecutionSpinner::with_target(
+    &name,
+    extract_target(&name, &input),
+    self.theme.clone()
+);
+let result = self.tool_executor.execute(id.clone(), &name, input);
+if result.is_success() {
+    spinner.finish_success();
+} else {
+    spinner.finish_failed(result.error().unwrap());
+}
+```
+
+**Tests:**
+| Test | What it verifies |
+|------|------------------|
+| `test_tool_executor_retry_transient` | Network errors retried 3 times |
+| `test_tool_spinner_shows_target` | Spinner displays file path |
+| `test_tool_spinner_timing` | Elapsed time shown on completion |
+
+**Stopping condition:**
+```
+✓ ToolExecutor handles all tool execution
+✓ Spinners animate during tool calls
+✓ Retry attempts displayed to user
+✓ Success/failure with timing shown
+```
+
+---
+
+#### 14.3: Self-Healing Error Recovery
+
+**Deliverables:**
+
+1. **FixAgent Integration**
+   - [ ] Check `ToolExecutionResult::is_auto_fixable()` after errors
+   - [ ] Spawn `FixAgent::spawn()` for fixable errors
+   - [ ] Display fix agent progress via status bar
+   - [ ] Apply fix if successful, re-run original tool
+   - [ ] Generate regression test via `generate_regression_test()`
+
+2. **Error Recovery Flow**
+   - [ ] Categorize errors via `ToolError::category`
+   - [ ] For `ErrorCategory::Code`, attempt auto-fix
+   - [ ] For `ErrorCategory::Network`, retry with backoff (already in ToolExecutor)
+   - [ ] For `ErrorCategory::Permission`, show permission prompt
+   - [ ] For `ErrorCategory::Resource`, suggest alternatives
+
+**Implementation approach:**
+
+```rust
+// In process_conversation(), after tool execution:
+match result.result {
+    Ok(output) => { /* success path */ },
+    Err(error) if error.is_auto_fixable() => {
+        // Spawn fix agent
+        if let Some(fix_agent) = FixAgent::spawn(result, FixAgentConfig::default()) {
+            let fix_result = fix_agent.attempt_fix(
+                |fix_info| apply_fix(fix_info, &config),
+                |_| verify_fix()
+            );
+
+            if fix_result.success {
+                // Re-run the original tool
+                let retry_result = self.tool_executor.execute(...);
+                // ... handle retry
+            }
+        }
+    },
+    Err(error) => { /* show error */ }
+}
+```
+
+**Tests:**
+| Test | What it verifies |
+|------|------------------|
+| `test_auto_fix_missing_dependency` | Adds missing crate to Cargo.toml |
+| `test_auto_fix_missing_import` | Adds missing import statement |
+| `test_regression_test_generated` | Test written after successful fix |
+| `test_no_fix_infinite_loop` | Gives up after max attempts |
+
+**Stopping condition:**
+```
+✓ Missing dependency errors trigger auto-fix
+✓ Fix agent progress shown in /status
+✓ Regression tests generated in tests/auto_fix/
+✓ Original operation retried after fix
+✓ Max retry limit prevents infinite loops
+```
+
+---
+
+#### 14.4: UI Enhancements
+
+**Deliverables:**
+
+1. **StatusBar for Multi-Agent Display**
+   - [ ] Create `StatusBar` instance
+   - [ ] Query `agent_manager.get_all_statuses()` periodically
+   - [ ] Render status bar above input prompt when agents active
+   - [ ] Clear status bar when all agents complete
+
+2. **LongWaitDetector Integration**
+   - [ ] Replace manual `elapsed.as_secs()` check with `LongWaitDetector`
+   - [ ] Call `detector.start()` before API call
+   - [ ] Call `detector.check()` periodically
+   - [ ] Trigger fun fact on first threshold crossing
+
+3. **Enhanced Tool Result Formatting**
+   - [ ] Use `ToolResultFormatter::format_result()` consistently
+   - [ ] Add syntax highlighting for code in results
+   - [ ] Implement collapsible sections for long outputs
+   - [ ] Add line numbers to file reads
+
+**Implementation approach:**
+
+```rust
+// Status bar rendering
+if !agent_statuses.is_empty() {
+    self.status_bar.render(&agent_statuses)?;
+    // Move cursor below status bar
+    execute!(stdout(), cursor::MoveDown(agent_statuses.len() as u16 + 2))?;
+}
+
+// Long wait detection
+let mut detector = LongWaitDetector::new(Duration::from_secs(self.fun_fact_delay as u64));
+detector.start();
+
+// ... start API call ...
+
+// Periodically check during wait
+if detector.check() && !triggered {
+    self.display_fun_fact();
+    triggered = true;
+}
+```
+
+**Tests:**
+| Test | What it verifies |
+|------|------------------|
+| `test_status_bar_multiple_agents` | Displays all active agents |
+| `test_status_bar_progress_updates` | Progress bars update correctly |
+| `test_long_wait_detector_threshold` | Fun fact triggers after 10s |
+| `test_tool_result_syntax_highlight` | Code highlighted in results |
+
+**Stopping condition:**
+```
+✓ Status bar appears when agents spawn
+✓ Progress bars update in real-time
+✓ Fun facts trigger at exact threshold
+✓ Tool results nicely formatted with syntax highlighting
+```
+
+---
+
+#### 14.5: Advanced Git Features
+
+**Deliverables:**
+
+1. **File Grouping in /commit**
+   - [ ] Use `FileGrouper::group_files()` in commit command
+   - [ ] Suggest logical splits for unrelated changes
+   - [ ] Show grouping rationale to user
+   - [ ] Ask which group to commit
+
+2. **Smart Commit Message Generation**
+   - [ ] Analyze all files in group via `suggest_commit_splits()`
+   - [ ] Generate purpose-focused message from changes
+   - [ ] Show commit message preview with edit option
+   - [ ] Support multi-commit workflow for logical separation
+
+**Implementation approach:**
+
+```rust
+// In commit.rs
+let repo = GitRepo::open(".")?;
+let status = repo.status()?;
+let files = status.files;
+
+// Group related files
+let groups = FileGrouper::group_files(&files);
+
+if groups.len() > 1 {
+    // Suggest splits
+    println!("Found {} logical groups:", groups.len());
+    for (i, group) in groups.iter().enumerate() {
+        println!("  {}. {} ({} files)", i+1, group.reason.description(), group.files.len());
+    }
+    // Let user pick which to commit
+}
+```
+
+**Tests:**
+| Test | What it verifies |
+|------|------------------|
+| `test_file_grouping_same_dir` | Files grouped by directory |
+| `test_file_grouping_test_impl` | Tests paired with implementations |
+| `test_commit_split_suggestion` | Suggests separating unrelated changes |
+| `test_commit_message_purpose` | Message focuses on "why" not "what" |
+
+**Stopping condition:**
+```
+✓ /commit suggests logical file groups
+✓ User can commit subsets of changes
+✓ Commit messages explain purpose clearly
+✓ Test/impl files grouped intelligently
+```
+
+---
+
+#### 14.6: Obsidian Integration
+
+**Deliverables:**
+
+1. **/document Command Enhancement**
+   - [ ] Use `ObsidianVault::search()` to find related notes
+   - [ ] Show search results with relevance scores
+   - [ ] Support creating new notes in suggested locations
+   - [ ] Support updating existing notes with diffs
+
+2. **Note Template System**
+   - [ ] Generate structured note templates by topic
+   - [ ] Include metadata (date, tags, backlinks)
+   - [ ] Support different note types (meeting, concept, reference)
+
+**Tests:**
+| Test | What it verifies |
+|------|------------------|
+| `test_document_search_finds_related` | Finds notes by content |
+| `test_document_creates_in_location` | Suggests correct subdirectory |
+| `test_document_shows_diff` | Preview changes before applying |
+
+**Stopping condition:**
+```
+✓ /document finds existing notes
+✓ New notes created in appropriate subdirs
+✓ Updates show diff preview
+✓ Metadata included in new notes
+```
+
+---
+
+#### 14.7: Comprehensive Testing
+
+**Deliverables:**
+
+1. **Build Verification**
+   ```bash
+   cargo build --all-targets
+   cargo test --all
+   cargo clippy --all-targets -- -D warnings
+   cargo fmt --all -- --check
+   ```
+
+2. **Integration Test Suite**
+   - [ ] Test agent spawning and status
+   - [ ] Test tool execution with retries
+   - [ ] Test auto-fix workflow end-to-end
+   - [ ] Test permission prompts and config updates
+   - [ ] Test multi-agent coordination
+
+3. **Manual Workflow Tests**
+   - [ ] Spawn multiple agents, check /status
+   - [ ] Trigger permission prompt, select "Always"
+   - [ ] Cause tool error, verify auto-fix attempt
+   - [ ] Let long operation run, see fun fact
+   - [ ] Commit with file grouping
+
+**Test scenarios:**
+
+```rust
+#[tokio::test]
+async fn test_end_to_end_auto_fix() {
+    // 1. Set up project missing a dependency
+    // 2. Ask Claude to use that dependency
+    // 3. Tool execution fails
+    // 4. Verify FixAgent spawned
+    // 5. Verify dependency added
+    // 6. Verify regression test created
+    // 7. Verify retry succeeded
+}
+
+#[tokio::test]
+async fn test_multi_agent_status_display() {
+    // 1. Spawn 3 test agents
+    // 2. Run /status
+    // 3. Verify all 3 shown with progress
+    // 4. Cancel one agent
+    // 5. Run /status again
+    // 6. Verify only 2 active
+}
+
+#[tokio::test]
+async fn test_permission_prompt_workflow() {
+    // 1. Attempt write to /tmp/test.txt
+    // 2. Verify prompt appears
+    // 3. Simulate "Always" response
+    // 4. Verify config updated
+    // 5. Attempt another write to /tmp/
+    // 6. Verify no prompt (cached)
+}
+```
+
+**Stopping condition:**
+```
+✓ cargo build produces NO warnings
+✓ All 210+ tests pass
+✓ Clippy produces no warnings
+✓ Code formatted consistently
+✓ All integration tests pass
+✓ Manual workflows verified
+```
+
+---
+
+#### 14.8: Documentation & Cleanup
+
+**Deliverables:**
+
+1. **Code Documentation**
+   - [ ] Add doc comments to all public APIs
+   - [ ] Document integration points between modules
+   - [ ] Add examples to complex functions
+   - [ ] Update README with new features
+
+2. **Architecture Documentation**
+   - [ ] Update `docs/CLI_ARCHITECTURE.md` with final structure
+   - [ ] Document agent lifecycle and coordination
+   - [ ] Document error recovery flow
+   - [ ] Document tool execution pipeline
+
+3. **Remove Temporary Allows**
+   - [ ] Remove any `#[allow(dead_code)]` annotations added temporarily
+   - [ ] Verify all code is actually used
+   - [ ] Clean up any debug prints or temporary code
+
+**Stopping condition:**
+```
+✓ All public APIs documented
+✓ Architecture docs updated
+✓ No #[allow(dead_code)] annotations
+✓ No TODO or FIXME comments
+✓ README reflects actual features
+```
+
+---
+
+## Phase 14 Definition of Done
+
+A complete integration when:
+
+```
+□ All modules wired into main execution flow
+□ Zero compiler warnings on `cargo build`
+□ Zero clippy warnings on `cargo clippy`
+□ All 210+ tests pass
+□ New integration tests added and passing
+□ Manual workflow tests verified
+□ Code formatted with rustfmt
+□ Documentation updated
+□ All advanced features functional:
+  □ Self-healing error recovery
+  □ Multi-agent coordination
+  □ Permission prompts with config updates
+  □ Tool execution with retries and spinners
+  □ Smart git commit grouping
+  □ Obsidian vault integration
+  □ Status bar for agent progress
+  □ Long-wait fun facts
+```
+
+---
+
 ## Edge Case Strategy
 
 For each feature, handle edge cases with this priority:

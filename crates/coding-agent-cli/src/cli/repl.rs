@@ -6,6 +6,7 @@ use super::commands::{parse_command, CommandContext, CommandRegistry, CommandRes
 use super::input::{InputHandler, InputResult};
 use super::modes::Mode;
 use super::terminal::Terminal;
+use crate::agents::manager::AgentManager;
 use crate::config::Config;
 use crate::integrations::{Session, SessionManager};
 use crate::permissions::{PermissionChecker, TrustedPaths};
@@ -19,6 +20,7 @@ use coding_agent_core::{
 };
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -96,6 +98,8 @@ pub struct Repl {
     fun_facts_enabled: bool,
     /// Delay before showing fun facts (in seconds)
     fun_fact_delay: u32,
+    /// Agent manager for spawning and tracking autonomous agents
+    agent_manager: Arc<AgentManager>,
 }
 
 impl Repl {
@@ -161,6 +165,9 @@ impl Repl {
             None
         };
 
+        // Initialize agent manager
+        let agent_manager = Arc::new(AgentManager::new());
+
         Self {
             config,
             registry: CommandRegistry::with_defaults(),
@@ -181,6 +188,7 @@ impl Repl {
             fun_fact_client,
             fun_facts_enabled,
             fun_fact_delay,
+            agent_manager,
         }
     }
 
@@ -762,7 +770,7 @@ impl Repl {
         let mut ctx = CommandContext {
             registry: self.registry.clone(),
             cost_tracker: self.cost_tracker.clone(),
-            agent_manager: None,
+            agent_manager: Some(Arc::clone(&self.agent_manager)),
         };
 
         match self.registry.get(name) {
