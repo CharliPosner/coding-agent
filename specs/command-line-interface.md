@@ -1026,7 +1026,7 @@ src/
 - [x] Fix-agent spawning for code errors
 - [x] Diagnostic analysis (parse compiler errors)
 - [x] Auto-fix application
-- [ ] Regression test generation
+- [x] Regression test generation
 - [ ] Retry logic with backoff for network errors
 - [ ] Tool execution spinner with status
 

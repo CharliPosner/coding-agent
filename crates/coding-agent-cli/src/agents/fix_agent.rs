@@ -4,7 +4,11 @@
 //! and fix the issue. It can handle errors like missing dependencies, missing
 //! imports, type errors, and syntax errors.
 
-use crate::tools::{ErrorCategory, ToolError, ToolExecutionResult};
+use crate::tools::{
+    ErrorCategory, FixApplicationResult, FixInfo, FixType, RegressionTest, RegressionTestConfig,
+    ToolError, ToolExecutionResult,
+};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -26,6 +30,9 @@ pub struct FixAgentConfig {
 
     /// Whether to allow fixes that modify multiple files.
     pub allow_multi_file_fixes: bool,
+
+    /// Configuration for regression test generation.
+    pub regression_test_config: RegressionTestConfig,
 }
 
 impl Default for FixAgentConfig {
@@ -35,6 +42,7 @@ impl Default for FixAgentConfig {
             generate_tests: true,
             attempt_timeout_ms: 30000, // 30 seconds
             allow_multi_file_fixes: true,
+            regression_test_config: RegressionTestConfig::default(),
         }
     }
 }
@@ -116,7 +124,7 @@ pub struct FixResult {
     pub original_error: String,
 
     /// Generated regression test (if any).
-    pub generated_test: Option<String>,
+    pub generated_test: Option<RegressionTest>,
 
     /// Total duration of the fix operation.
     pub total_duration: Duration,
@@ -175,10 +183,16 @@ pub struct FixAgent {
     created_at: Instant,
 
     /// Generated regression test (if any).
-    generated_test: Option<String>,
+    generated_test: Option<RegressionTest>,
 
     /// Callback for status updates.
     status_callback: Option<Arc<dyn Fn(FixStatus) + Send + Sync>>,
+
+    /// Fix info extracted from the error (for test generation).
+    fix_info: Option<FixInfo>,
+
+    /// Last successful fix result (for test generation).
+    last_fix_result: Option<FixApplicationResult>,
 }
 
 impl FixAgent {
@@ -204,6 +218,8 @@ impl FixAgent {
             created_at: Instant::now(),
             generated_test: None,
             status_callback: None,
+            fix_info: None,
+            last_fix_result: None,
         })
     }
 
@@ -308,7 +324,7 @@ impl FixAgent {
     /// 4. Verify it worked
     ///
     /// The `apply_fix` callback is called with the fix description and should
-    /// return Ok(modified_files) on success or Err(message) on failure.
+    /// return Ok((modified_files, fix_result)) on success or Err(message) on failure.
     ///
     /// The `verify_fix` callback is called after the fix is applied and should
     /// return Ok(()) if the fix worked or Err(message) if it didn't.
@@ -323,6 +339,9 @@ impl FixAgent {
         self.set_status(FixStatus::Analyzing);
         let (fix_type, description, _suggested_action) = self.diagnose();
 
+        // Build fix info for test generation
+        self.fix_info = Some(self.build_fix_info(fix_type));
+
         while self.has_attempts_remaining() {
             let attempt_start = Instant::now();
             let attempt_number = (self.attempts.len() + 1) as u32;
@@ -333,6 +352,12 @@ impl FixAgent {
 
             match apply_result {
                 Ok(modified_files) => {
+                    // Store fix result for test generation
+                    self.last_fix_result = Some(FixApplicationResult::success(
+                        modified_files.iter().map(PathBuf::from).collect(),
+                        description,
+                    ));
+
                     // Verify the fix
                     self.set_status(FixStatus::Verifying);
                     let verify_result = verify_fix();
@@ -353,7 +378,7 @@ impl FixAgent {
 
                             // Generate regression test if configured
                             if self.config.generate_tests {
-                                self.generated_test = Some(self.generate_regression_test());
+                                self.generated_test = self.generate_regression_test();
                             }
 
                             return self.build_result(start.elapsed());
@@ -393,6 +418,39 @@ impl FixAgent {
         self.build_result(start.elapsed())
     }
 
+    /// Build FixInfo from the diagnosed fix type.
+    fn build_fix_info(&self, fix_type: &str) -> FixInfo {
+        let ft = match fix_type {
+            "missing_dependency" => FixType::AddDependency,
+            "missing_import" => FixType::AddImport,
+            "type_error" => FixType::FixType,
+            "syntax_error" => FixType::FixSyntax,
+            _ => FixType::FixSyntax, // Default fallback
+        };
+
+        let (target_file, target_item) = match &self.error.category {
+            ErrorCategory::Code { error_type } => match error_type.as_str() {
+                "missing_dependency" => (
+                    Some("Cargo.toml".to_string()),
+                    extract_crate_name_from_error(&self.error.message),
+                ),
+                "missing_import" => (
+                    extract_file_from_error(&self.error.message),
+                    extract_item_name_from_error(&self.error.message),
+                ),
+                _ => (extract_file_from_error(&self.error.message), None),
+            },
+            _ => (None, None),
+        };
+
+        FixInfo {
+            fix_type: ft,
+            target_file,
+            target_item,
+            suggested_change: self.error.suggested_fix.clone().unwrap_or_default(),
+        }
+    }
+
     /// Cancel the fix operation.
     pub fn cancel(&mut self) -> FixResult {
         self.set_status(FixStatus::Cancelled);
@@ -400,60 +458,11 @@ impl FixAgent {
     }
 
     /// Generate a regression test for the fix.
-    fn generate_regression_test(&self) -> String {
-        let (fix_type, _description, _action) = self.diagnose();
-        let error_msg = &self.error.message;
+    fn generate_regression_test(&self) -> Option<RegressionTest> {
+        let fix_info = self.fix_info.as_ref()?;
+        let fix_result = self.last_fix_result.as_ref()?;
 
-        match fix_type {
-            "missing_dependency" => format!(
-                r#"#[test]
-fn test_dependency_available() {{
-    // Regression test: ensures the dependency fix for:
-    // {}
-    // is not reverted
-    compile_error!("Replace this with actual dependency usage test");
-}}"#,
-                error_msg
-            ),
-            "missing_import" => format!(
-                r#"#[test]
-fn test_import_available() {{
-    // Regression test: ensures the import fix for:
-    // {}
-    // is not reverted
-    compile_error!("Replace this with actual import usage test");
-}}"#,
-                error_msg
-            ),
-            "type_error" => format!(
-                r#"#[test]
-fn test_type_compatibility() {{
-    // Regression test: ensures the type fix for:
-    // {}
-    // is not reverted
-    compile_error!("Replace this with actual type check test");
-}}"#,
-                error_msg
-            ),
-            "syntax_error" => format!(
-                r#"#[test]
-fn test_syntax_valid() {{
-    // Regression test: ensures the syntax fix for:
-    // {}
-    // is not reverted
-    // (This test verifies compilation succeeds)
-}}"#,
-                error_msg
-            ),
-            _ => format!(
-                r#"#[test]
-fn test_fix_not_reverted() {{
-    // Regression test for: {}
-    compile_error!("Replace this with actual verification test");
-}}"#,
-                error_msg
-            ),
-        }
+        crate::tools::generate_regression_test(fix_info, fix_result, &self.config.regression_test_config)
     }
 
     /// Build the final result.
@@ -480,10 +489,52 @@ impl std::fmt::Debug for FixAgent {
     }
 }
 
+/// Extract a crate name from an error message.
+fn extract_crate_name_from_error(message: &str) -> Option<String> {
+    // Look for backtick-quoted names: `foo`
+    if let Some(start) = message.find('`') {
+        if let Some(end) = message[start + 1..].find('`') {
+            let name = &message[start + 1..start + 1 + end];
+            if !name.is_empty() && !name.contains(' ') {
+                return Some(name.to_string());
+            }
+        }
+    }
+
+    // Look for single-quoted names: 'foo'
+    if let Some(start) = message.find('\'') {
+        if let Some(end) = message[start + 1..].find('\'') {
+            let name = &message[start + 1..start + 1 + end];
+            if !name.is_empty() && !name.contains(' ') {
+                return Some(name.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+/// Extract an item name from an error message.
+fn extract_item_name_from_error(message: &str) -> Option<String> {
+    extract_crate_name_from_error(message) // Same logic for now
+}
+
+/// Extract a file path from an error message.
+fn extract_file_from_error(message: &str) -> Option<String> {
+    // Look for patterns like "src/main.rs:10:5" or "in src/lib.rs"
+    for word in message.split_whitespace() {
+        let cleaned = word.trim_matches(|c| c == ':' || c == ',' || c == '.' || c == ')' || c == '(');
+        if cleaned.ends_with(".rs") || cleaned.ends_with(".go") || cleaned.ends_with(".ts") {
+            return Some(cleaned.to_string());
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::{ToolError, ToolExecutionResult};
+    use crate::tools::ToolError;
     use std::time::Duration;
 
     fn make_code_error_result(error_msg: &str) -> ToolExecutionResult {
@@ -797,8 +848,9 @@ mod tests {
         );
 
         let test = fix_result.generated_test.unwrap();
-        assert!(test.contains("#[test]"));
-        assert!(test.contains("dependency"));
+        assert!(test.source.contains("#[test]"));
+        assert!(test.source.contains("serde"));
+        assert_eq!(test.fix_type, FixType::AddDependency);
     }
 
     #[test]

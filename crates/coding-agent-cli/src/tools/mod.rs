@@ -7,10 +7,12 @@
 //! - Hooks for self-healing recovery (fix-agent spawning)
 //! - Diagnostic analysis for parsing compiler errors
 //! - Auto-fix application for code errors
+//! - Regression test generation to prevent fix reversions
 
 mod auto_fix;
 mod diagnostics;
 mod executor;
+mod regression_tests;
 
 pub use auto_fix::{apply_fix, AutoFixConfig, FixApplicationResult};
 pub use diagnostics::{
@@ -19,4 +21,8 @@ pub use diagnostics::{
 };
 pub use executor::{
     ErrorCategory, ToolError, ToolExecutionResult, ToolExecutor, ToolExecutorConfig,
+};
+pub use regression_tests::{
+    generate_regression_test, generate_test_from_diagnostic, write_regression_test,
+    RegressionTest, RegressionTestConfig,
 };
