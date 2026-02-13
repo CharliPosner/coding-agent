@@ -5,6 +5,7 @@
 
 mod clear;
 pub mod config;
+mod context;
 mod cost;
 mod exit;
 mod help;
@@ -73,6 +74,7 @@ impl CommandRegistry {
         registry.register(&help::HelpCommand);
         registry.register(&clear::ClearCommand);
         registry.register(&config::ConfigCommand);
+        registry.register(&context::ContextCommand);
         registry.register(&cost::CostCommand);
         registry.register(&exit::ExitCommand);
         registry.register(&history::HistoryCommand);
@@ -172,6 +174,12 @@ mod tests {
 
         // Clear command exists
         assert!(registry.get("clear").is_some());
+
+        // Config command exists
+        assert!(registry.get("config").is_some());
+
+        // Context command exists
+        assert!(registry.get("context").is_some());
 
         // Cost command exists
         assert!(registry.get("cost").is_some());

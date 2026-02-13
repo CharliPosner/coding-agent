@@ -908,7 +908,7 @@ src/
 - [x] Color-coded usage (green/yellow/red)
 - [x] Real-time updates after each message
 - [x] `/cost` command with detailed breakdown
-- [ ] `/context` command showing loaded files, working dir
+- [x] `/context` command showing loaded files, working dir
 - [ ] Cost calculation based on model pricing
 
 **Files to create:**
