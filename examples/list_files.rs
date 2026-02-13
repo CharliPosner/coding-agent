@@ -49,6 +49,8 @@ fn list_files(input: Value) -> Result<String, String> {
 }
 
 fn main() {
+    dotenvy::dotenv().ok();
+
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
 
     let tools = vec![ToolDefinition {

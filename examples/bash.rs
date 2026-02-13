@@ -51,6 +51,9 @@ fn bash(input: Value) -> Result<String, String> {
 }
 
 fn main() {
+    // Load .env file if present
+    dotenvy::dotenv().ok();
+
     // Get API key from environment
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
 

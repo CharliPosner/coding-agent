@@ -1,4 +1,4 @@
-# Makefile for how-to-build-a-coding-agent-rust
+# Makefile for coding-agent
 # Build, run, and test targets for all examples
 
 .PHONY: build run-chat run-read run-list-files run-bash run-edit run-code-search test clean help

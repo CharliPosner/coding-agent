@@ -120,6 +120,8 @@ If the file specified with path doesn't exist, it will be created (only when old
 // ============================================================================
 
 fn main() {
+    dotenvy::dotenv().ok();
+
     let verbose = std::env::args().any(|arg| arg == "--verbose" || arg == "-v");
 
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");

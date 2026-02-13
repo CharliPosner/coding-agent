@@ -10,6 +10,9 @@ use coding_agent::Agent;
 use std::env;
 
 fn main() {
+    // Load .env file if present
+    dotenvy::dotenv().ok();
+
     // Parse command line arguments for --verbose flag
     let args: Vec<String> = env::args().collect();
     let verbose = args.iter().any(|arg| arg == "--verbose" || arg == "-v");

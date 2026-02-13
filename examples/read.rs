@@ -38,6 +38,8 @@ fn read_file(input: Value) -> Result<String, String> {
 // ============================================================================
 
 fn main() {
+    dotenvy::dotenv().ok();
+
     let api_key = env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
     let verbose = env::args().any(|arg| arg == "--verbose");
 
