@@ -4,6 +4,7 @@
 //! Commands are registered by name and can be looked up and executed.
 
 mod clear;
+mod commit;
 pub mod config;
 mod context;
 mod cost;
@@ -73,6 +74,7 @@ impl CommandRegistry {
         let mut registry = Self::new();
         registry.register(&help::HelpCommand);
         registry.register(&clear::ClearCommand);
+        registry.register(&commit::CommitCommand);
         registry.register(&config::ConfigCommand);
         registry.register(&context::ContextCommand);
         registry.register(&cost::CostCommand);

@@ -1082,7 +1082,7 @@ src/
 
 **Deliverables:**
 - [x] Git status reading with `git2`
-- [ ] `/commit` command (agent decides what to commit)
+- [x] `/commit` command (agent decides what to commit)
 - [ ] `/commit --pick` (interactive file picker)
 - [ ] Smart file grouping (logically related changes)
 - [ ] 3-sentence purpose-focused commit message generation
