@@ -8,6 +8,7 @@ pub mod config;
 pub mod integrations;
 pub mod permissions;
 pub mod tokens;
+pub mod tools;
 pub mod ui;
 
 pub use cli::{InputHandler, Repl, ReplConfig, Terminal};
@@ -18,4 +19,5 @@ pub use permissions::{
     TrustedPathsError,
 };
 pub use tokens::{ModelPricing, TokenCount, TokenCounter, TokenCounterError};
+pub use tools::{ErrorCategory, ToolError, ToolExecutionResult, ToolExecutor, ToolExecutorConfig};
 pub use ui::ContextBar;
