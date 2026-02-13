@@ -15,6 +15,7 @@ mod help;
 mod history;
 mod model;
 mod spec;
+mod status;
 mod undo;
 
 use crate::cli::Mode;
@@ -94,6 +95,7 @@ impl CommandRegistry {
         registry.register(&history::HistoryCommand);
         registry.register(&model::ModelCommand);
         registry.register(&spec::SpecCommand);
+        registry.register(&status::StatusCommand);
         registry.register(&undo::UndoCommand);
         registry
     }

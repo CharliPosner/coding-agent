@@ -1266,14 +1266,14 @@ src/
 **Goal:** Delightful experience with entertainment during waits.
 
 **Deliverables:**
-- [ ] Fun facts API integration (`reqwest`)
-- [ ] Fact caching (local storage)
-- [ ] Fallback to curated list
-- [ ] Thinking messages rotation
-- [ ] Long-wait detection (>10s)
-- [ ] Fun fact display during long waits
-- [ ] Configurable enable/disable
-- [ ] `/status` command (active tasks, running agents)
+- [x] Fun facts API integration (`reqwest`)
+- [x] Fact caching (local storage)
+- [x] Fallback to curated list
+- [x] Thinking messages rotation
+- [x] Long-wait detection (>10s)
+- [x] Fun fact display during long waits
+- [x] Configurable enable/disable
+- [x] `/status` command (active tasks, running agents)
 
 **Files to create:**
 ```

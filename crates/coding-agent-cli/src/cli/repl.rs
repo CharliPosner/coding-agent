@@ -11,10 +11,12 @@ use crate::integrations::{Session, SessionManager};
 use crate::permissions::{PermissionChecker, TrustedPaths};
 use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::tools::{create_tool_definitions, execute_tool_with_permissions, tool_definitions_to_api};
-use crate::ui::{ContextBar, ToolResultFormatter};
+use crate::ui::{ContextBar, ToolResultFormatter, ThinkingMessages, FunFactClient};
 use coding_agent_core::{ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition};
 use std::io::Write;
 use std::path::PathBuf;
+use std::thread;
+use std::time::{Duration, Instant};
 
 /// REPL configuration
 pub struct ReplConfig {
@@ -82,6 +84,14 @@ pub struct Repl {
     permission_checker: Option<PermissionChecker>,
     /// Current mode (normal or planning)
     mode: Mode,
+    /// Thinking messages manager for rotating messages
+    thinking_messages: ThinkingMessages,
+    /// Fun fact client for entertaining content during long waits
+    fun_fact_client: Option<FunFactClient>,
+    /// Whether fun facts are enabled
+    fun_facts_enabled: bool,
+    /// Delay before showing fun facts (in seconds)
+    fun_fact_delay: u32,
 }
 
 impl Repl {
@@ -133,6 +143,22 @@ impl Repl {
             PermissionChecker::new(trusted_paths, cfg.permissions.auto_read)
         });
 
+        // Initialize thinking messages and fun facts
+        let thinking_messages = ThinkingMessages::new();
+        let fun_facts_enabled = app_config
+            .map(|cfg| cfg.behavior.fun_facts)
+            .unwrap_or(true);
+        let fun_fact_delay = app_config
+            .map(|cfg| cfg.behavior.fun_fact_delay)
+            .unwrap_or(10);
+
+        // Try to create fun fact client if enabled
+        let fun_fact_client = if fun_facts_enabled {
+            FunFactClient::new().ok()
+        } else {
+            None
+        };
+
         Self {
             config,
             registry: CommandRegistry::with_defaults(),
@@ -149,6 +175,10 @@ impl Repl {
             tool_result_formatter,
             permission_checker,
             mode: Mode::default(),
+            thinking_messages,
+            fun_fact_client,
+            fun_facts_enabled,
+            fun_fact_delay,
         }
     }
 
@@ -290,9 +320,22 @@ impl Repl {
                 return Err("Maximum tool iterations reached. Stopping to prevent infinite loop.".to_string());
             }
 
-            // Show thinking indicator
+            // Show thinking indicator with potential fun fact during long waits
             self.print_newline();
-            self.print_line("Thinking...");
+
+            // Get a thinking message
+            let thinking_msg = self.thinking_messages.current();
+            self.print_line(thinking_msg);
+
+            // Pre-fetch a fun fact if enabled
+            let fun_fact = if self.fun_facts_enabled && self.fun_fact_client.is_some() {
+                self.fun_fact_client.as_mut().map(|client| client.get_fact())
+            } else {
+                None
+            };
+
+            // Record start time
+            let start_time = Instant::now();
 
             // Call Claude API
             let response = match self.call_claude(&self.conversation) {
@@ -305,9 +348,38 @@ impl Repl {
                 }
             };
 
-            // Clear the "Thinking..." line
-            print!("\x1b[A\x1b[2K\r");
-            let _ = std::io::stdout().flush();
+            // Check if call took longer than threshold
+            let elapsed = start_time.elapsed();
+            let show_fun_fact = elapsed.as_secs() >= self.fun_fact_delay as u64;
+
+            // If call took long enough and we have a fun fact, display it
+            if show_fun_fact && fun_fact.is_some() {
+                let fact = fun_fact.unwrap();
+
+                // Clear thinking line and display fun fact
+                print!("\x1b[A\x1b[2K\r");
+                let _ = std::io::stdout().flush();
+
+                self.print_newline();
+                self.print_line(&format!("\x1b[36mDid you know?\x1b[0m {}", fact.text));
+                self.print_newline();
+
+                // Brief pause to let user see the fact
+                thread::sleep(Duration::from_millis(1500));
+
+                // Clear the fun fact
+                for _ in 0..3 {
+                    print!("\x1b[A\x1b[2K\r");
+                }
+                let _ = std::io::stdout().flush();
+            } else {
+                // Just clear the thinking line
+                print!("\x1b[A\x1b[2K\r");
+                let _ = std::io::stdout().flush();
+            }
+
+            // Rotate to next thinking message for next iteration
+            self.thinking_messages.next();
 
             // Process the response
             let mut response_text = String::new();
