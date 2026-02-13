@@ -320,7 +320,11 @@ mod tests {
     use crate::tokens::CostTracker;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    // Mutex to serialize tests that change directories
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     fn init_test_repo() -> (TempDir, Repository) {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -425,6 +429,7 @@ mod tests {
 
     #[test]
     fn test_undo_last_commit_soft() {
+        let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
@@ -511,6 +516,7 @@ mod tests {
 
     #[test]
     fn test_undo_last_commit_hard() {
+        let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
@@ -570,6 +576,7 @@ mod tests {
 
     #[test]
     fn test_undo_no_commits() {
+        let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
@@ -618,6 +625,7 @@ mod tests {
 
     #[test]
     fn test_undo_initial_commit() {
+        let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
@@ -667,6 +675,7 @@ mod tests {
 
     #[test]
     fn test_undo_not_in_repo() {
+        let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
@@ -714,6 +723,7 @@ mod tests {
 
     #[test]
     fn test_undo_revert_file() {
+        let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
