@@ -2113,10 +2113,10 @@ match result.result {
 **Deliverables:**
 
 1. **StatusBar for Multi-Agent Display**
-   - [ ] Create `StatusBar` instance
-   - [ ] Query `agent_manager.get_all_statuses()` periodically
-   - [ ] Render status bar above input prompt when agents active
-   - [ ] Clear status bar when all agents complete
+   - [x] Create `StatusBar` instance
+   - [x] Query `agent_manager.get_all_statuses()` periodically
+   - [x] Render status bar above input prompt when agents active
+   - [x] Clear status bar when all agents complete
 
 2. **LongWaitDetector Integration**
    - [ ] Replace manual `elapsed.as_secs()` check with `LongWaitDetector`

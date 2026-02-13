@@ -14,7 +14,7 @@ use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::tools::{
     create_tool_definitions, tool_definitions_to_api, ToolExecutor, ToolExecutorConfig,
 };
-use crate::ui::{ContextBar, FunFactClient, Theme, ThinkingMessages, ToolExecutionSpinner, ToolResultFormatter};
+use crate::ui::{ContextBar, FunFactClient, StatusBar, Theme, ThinkingMessages, ToolExecutionSpinner, ToolResultFormatter};
 use coding_agent_core::{
     ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition,
 };
@@ -106,6 +106,10 @@ pub struct Repl {
     tool_executor: ToolExecutor,
     /// Theme for styling UI components
     theme: Theme,
+    /// Status bar for displaying multi-agent progress
+    status_bar: StatusBar,
+    /// Track number of status bar lines rendered (for clearing)
+    status_bar_lines: usize,
 }
 
 impl Repl {
@@ -204,6 +208,9 @@ impl Repl {
             tool_executor.register_tool(&tool_def.name, tool_def.function);
         }
 
+        // Initialize status bar with the same theme
+        let status_bar = StatusBar::with_theme(theme.clone());
+
         Self {
             config,
             registry: CommandRegistry::with_defaults(),
@@ -228,6 +235,8 @@ impl Repl {
             agent_manager,
             tool_executor,
             theme,
+            status_bar,
+            status_bar_lines: 0,
         }
     }
 
@@ -1077,11 +1086,46 @@ impl Repl {
         }
     }
 
+    /// Update and render the status bar showing active agents
+    fn update_status_bar(&mut self) -> Result<(), String> {
+        // Process any pending progress updates from agents
+        self.agent_manager.process_progress_updates();
+
+        // Get all agent statuses
+        let statuses = self.agent_manager.get_all_statuses();
+
+        // Filter to only show active agents (not complete or cancelled)
+        let active_statuses: Vec<_> = statuses
+            .into_iter()
+            .filter(|s| s.state.is_active() || matches!(s.state, crate::agents::status::AgentState::Queued))
+            .collect();
+
+        // Clear previous status bar if it was rendered
+        if self.status_bar_lines > 0 {
+            self.status_bar.clear(self.status_bar_lines).map_err(|e| e.to_string())?;
+            self.status_bar_lines = 0;
+        }
+
+        // Render new status bar if there are active agents
+        if !active_statuses.is_empty() {
+            self.status_bar_lines = self.status_bar.render(&active_statuses).map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
+
     /// Run the REPL loop
     pub async fn run(&mut self, _terminal: &mut Terminal) -> Result<(), String> {
         self.print_welcome();
 
         loop {
+            // Update and render status bar showing active agents
+            if let Err(e) = self.update_status_bar() {
+                if self.config.verbose {
+                    eprintln!("[verbose] Warning: Failed to update status bar: {}", e);
+                }
+            }
+
             // Show mode indicator in prompt if in planning mode
             if let Some(indicator) = self.mode.indicator() {
                 print!("{} > ", indicator);
