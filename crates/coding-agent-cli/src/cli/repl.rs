@@ -12,8 +12,7 @@ use crate::integrations::{Session, SessionManager};
 use crate::permissions::{PermissionChecker, TrustedPaths};
 use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::tools::{
-    create_tool_definitions, execute_tool_with_permissions, tool_definitions_to_api, ToolExecutor,
-    ToolExecutorConfig,
+    create_tool_definitions, tool_definitions_to_api, ToolExecutor, ToolExecutorConfig,
 };
 use crate::ui::{ContextBar, FunFactClient, ThinkingMessages, ToolResultFormatter};
 use coding_agent_core::{
@@ -188,7 +187,9 @@ impl Repl {
 
         let mut tool_executor = ToolExecutor::new(tool_executor_config);
 
-        // Register all tool functions
+        // Register all tool functions with permission checking wrapper
+        // Note: We register the raw functions directly since permission checking
+        // will be added as a separate layer in Phase 14.1
         for tool_def in &tool_definitions {
             tool_executor.register_tool(&tool_def.name, tool_def.function);
         }
@@ -472,19 +473,31 @@ impl Repl {
                     self.format_tool_call(&name, &input)
                 ));
 
-                // Execute the tool with permission checking
-                let result = execute_tool_with_permissions(
-                    &self.tool_definitions,
-                    &name,
-                    input,
-                    self.permission_checker.as_ref(),
-                );
+                // Execute the tool using ToolExecutor
+                // Note: Permission checking is still done by execute_tool_with_permissions
+                // which is wrapped inside the registered tool functions
+                let execution_result = self.tool_executor.execute(id.clone(), &name, input.clone());
 
-                match result {
+                // Check if retry attempts were made
+                if execution_result.retries > 0 {
+                    self.print_line(&format!(
+                        "\x1b[33m  ↻ Retried {} time{}\x1b[0m",
+                        execution_result.retries,
+                        if execution_result.retries == 1 { "" } else { "s" }
+                    ));
+                }
+
+                match execution_result.result {
                     Ok(output) => {
-                        // Display success summary
+                        // Display success summary with elapsed time
                         let summary = self.summarize_tool_result(&name, &output);
-                        self.print_line(&format!("\x1b[32m✓ {}\x1b[0m", summary));
+                        let elapsed = execution_result.duration;
+                        let time_str = if elapsed.as_secs() > 0 {
+                            format!(" ({:.1}s)", elapsed.as_secs_f64())
+                        } else {
+                            format!(" ({}ms)", elapsed.as_millis())
+                        };
+                        self.print_line(&format!("\x1b[32m✓ {}{}\x1b[0m", summary, time_str));
 
                         // Display formatted result
                         let formatted = self.tool_result_formatter.format_result(&name, &output);
@@ -499,14 +512,19 @@ impl Repl {
                             is_error: None,
                         });
                     }
-                    Err(error) => {
-                        // Display error
-                        self.print_line(&format!("\x1b[31m✗ Error: {}\x1b[0m", error));
+                    Err(tool_error) => {
+                        // Display error with category information
+                        self.print_line(&format!("\x1b[31m✗ Error: {}\x1b[0m", tool_error.message));
+
+                        // Show suggested fix if available
+                        if let Some(suggested_fix) = &tool_error.suggested_fix {
+                            self.print_line(&format!("\x1b[33m  💡 Suggestion: {}\x1b[0m", suggested_fix));
+                        }
                         self.print_newline();
 
                         tool_results.push(ContentBlock::ToolResult {
                             tool_use_id: id,
-                            content: error,
+                            content: tool_error.message,
                             is_error: Some(true),
                         });
                     }

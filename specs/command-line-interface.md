@@ -1996,11 +1996,11 @@ src/permissions/checker.rs   # Call PermissionPrompt::prompt()
 **Deliverables:**
 
 1. **ToolExecutor Integration**
-   - [ ] Create `ToolExecutor` instance in `Repl::new()`
-   - [ ] Register all tools (read, write, edit, list, bash, search)
-   - [ ] Replace `execute_tool_with_permissions()` calls with `executor.execute()`
-   - [ ] Handle `ToolExecutionResult` with retry logic
-   - [ ] Display retry attempts to user
+   - [x] Create `ToolExecutor` instance in `Repl::new()`
+   - [x] Register all tools (read, write, edit, list, bash, search)
+   - [x] Replace `execute_tool_with_permissions()` calls with `executor.execute()`
+   - [x] Handle `ToolExecutionResult` with retry logic
+   - [x] Display retry attempts to user
 
 2. **ToolExecutionSpinner Integration**
    - [ ] Replace simple "● Running..." with `ToolExecutionSpinner::with_target()`
