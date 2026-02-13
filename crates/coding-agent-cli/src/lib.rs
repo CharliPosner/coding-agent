@@ -13,3 +13,4 @@ pub use cli::{InputHandler, Repl, ReplConfig, Terminal};
 pub use config::{Config, PersistenceConfig};
 pub use integrations::{Session, SessionManager, SpecStoryError};
 pub use tokens::{ModelPricing, TokenCount, TokenCounter, TokenCounterError};
+pub use ui::ContextBar;
