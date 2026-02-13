@@ -1008,8 +1008,8 @@ mod tests {
 
     #[test]
     fn test_commit_creates_commit() {
-        // Save original dir at the start - we'll restore it at the end
-        let original_dir = std::env::current_dir().expect("Failed to get cwd");
+        // Use manifest directory as a stable restore point (won't be deleted by other tests)
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         // Use a closure to ensure cleanup happens
         let test_result: Result<(), String> = (|| {
@@ -1051,8 +1051,8 @@ mod tests {
             // Run the commit with -a flag to stage the new file
             let result = cmd.execute(&["-a", "-m", "Add new file"], &mut ctx);
 
-            // Restore original directory BEFORE checking results or dropping temp_dir
-            std::env::set_current_dir(&original_dir)
+            // Restore to manifest directory (guaranteed to exist)
+            std::env::set_current_dir(&manifest_dir)
                 .map_err(|e| format!("Failed to restore dir: {}", e))?;
 
             // Check result
@@ -1079,8 +1079,8 @@ mod tests {
             Ok(())
         })();
 
-        // Always restore the original directory
-        let _ = std::env::set_current_dir(&original_dir);
+        // Always restore to manifest directory
+        let _ = std::env::set_current_dir(&manifest_dir);
 
         // Now check if the test passed
         if let Err(e) = test_result {
@@ -1090,7 +1090,8 @@ mod tests {
 
     #[test]
     fn test_commit_no_changes() {
-        let original_dir = std::env::current_dir().expect("Failed to get cwd");
+        // Use manifest directory as a stable restore point (won't be deleted by other tests)
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
             let (temp_dir, repo) = init_test_repo();
@@ -1126,8 +1127,8 @@ mod tests {
 
             let result = cmd.execute(&[], &mut ctx);
 
-            // Restore original directory BEFORE temp_dir is dropped
-            std::env::set_current_dir(&original_dir)
+            // Restore to manifest directory (guaranteed to exist)
+            std::env::set_current_dir(&manifest_dir)
                 .map_err(|e| format!("Failed to restore dir: {}", e))?;
 
             // Should report nothing to commit
@@ -1145,7 +1146,7 @@ mod tests {
             Ok(())
         })();
 
-        let _ = std::env::set_current_dir(&original_dir);
+        let _ = std::env::set_current_dir(&manifest_dir);
 
         if let Err(e) = test_result {
             panic!("{}", e);
@@ -1154,7 +1155,8 @@ mod tests {
 
     #[test]
     fn test_commit_not_in_repo() {
-        let original_dir = std::env::current_dir().expect("Failed to get cwd");
+        // Use manifest directory as a stable restore point (won't be deleted by other tests)
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
             let temp_dir = TempDir::new().map_err(|e| format!("Failed to create temp dir: {}", e))?;
@@ -1173,8 +1175,8 @@ mod tests {
 
             let result = cmd.execute(&[], &mut ctx);
 
-            // Restore original directory BEFORE temp_dir is dropped
-            std::env::set_current_dir(&original_dir)
+            // Restore to manifest directory (guaranteed to exist)
+            std::env::set_current_dir(&manifest_dir)
                 .map_err(|e| format!("Failed to restore dir: {}", e))?;
 
             // Should report not a repository
@@ -1190,7 +1192,7 @@ mod tests {
             Ok(())
         })();
 
-        let _ = std::env::set_current_dir(&original_dir);
+        let _ = std::env::set_current_dir(&manifest_dir);
 
         if let Err(e) = test_result {
             panic!("{}", e);

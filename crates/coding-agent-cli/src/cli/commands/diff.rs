@@ -487,7 +487,8 @@ mod tests {
 
     #[test]
     fn test_diff_not_in_repo() {
-        let original_dir = std::env::current_dir().expect("Failed to get cwd");
+        // Use manifest directory as a stable restore point (won't be deleted by other tests)
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
             let temp_dir =
@@ -507,8 +508,8 @@ mod tests {
 
             let result = cmd.execute(&[], &mut ctx);
 
-            // Restore original directory
-            std::env::set_current_dir(&original_dir)
+            // Restore to manifest directory (guaranteed to exist)
+            std::env::set_current_dir(&manifest_dir)
                 .map_err(|e| format!("Failed to restore dir: {}", e))?;
 
             match result {
@@ -523,7 +524,7 @@ mod tests {
             Ok(())
         })();
 
-        let _ = std::env::set_current_dir(&original_dir);
+        let _ = std::env::set_current_dir(&manifest_dir);
 
         if let Err(e) = test_result {
             panic!("{}", e);
@@ -532,7 +533,8 @@ mod tests {
 
     #[test]
     fn test_diff_shows_untracked_files() {
-        let original_dir = std::env::current_dir().expect("Failed to get cwd");
+        // Use manifest directory as a stable restore point (won't be deleted by other tests)
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
             let (temp_dir, repo) = init_test_repo();
@@ -556,8 +558,8 @@ mod tests {
 
             let result = cmd.execute(&[], &mut ctx);
 
-            // Restore original directory
-            std::env::set_current_dir(&original_dir)
+            // Restore to manifest directory (guaranteed to exist)
+            std::env::set_current_dir(&manifest_dir)
                 .map_err(|e| format!("Failed to restore dir: {}", e))?;
 
             match result {
@@ -577,7 +579,7 @@ mod tests {
             Ok(())
         })();
 
-        let _ = std::env::set_current_dir(&original_dir);
+        let _ = std::env::set_current_dir(&manifest_dir);
 
         if let Err(e) = test_result {
             panic!("{}", e);
@@ -586,7 +588,8 @@ mod tests {
 
     #[test]
     fn test_diff_staged_only_no_untracked() {
-        let original_dir = std::env::current_dir().expect("Failed to get cwd");
+        // Use manifest directory as a stable restore point (won't be deleted by other tests)
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let test_result: Result<(), String> = (|| {
             let (temp_dir, repo) = init_test_repo();
@@ -611,8 +614,8 @@ mod tests {
             // Request only staged changes
             let result = cmd.execute(&["--staged"], &mut ctx);
 
-            // Restore original directory
-            std::env::set_current_dir(&original_dir)
+            // Restore to manifest directory (guaranteed to exist)
+            std::env::set_current_dir(&manifest_dir)
                 .map_err(|e| format!("Failed to restore dir: {}", e))?;
 
             match result {
@@ -632,7 +635,7 @@ mod tests {
             Ok(())
         })();
 
-        let _ = std::env::set_current_dir(&original_dir);
+        let _ = std::env::set_current_dir(&manifest_dir);
 
         if let Err(e) = test_result {
             panic!("{}", e);
