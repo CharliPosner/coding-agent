@@ -1025,7 +1025,7 @@ src/
 - [x] Error categorization (code, permission, network, resource)
 - [x] Fix-agent spawning for code errors
 - [x] Diagnostic analysis (parse compiler errors)
-- [ ] Auto-fix application
+- [x] Auto-fix application
 - [ ] Regression test generation
 - [ ] Retry logic with backoff for network errors
 - [ ] Tool execution spinner with status

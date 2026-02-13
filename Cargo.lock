@@ -207,6 +207,7 @@ dependencies = [
  "tiktoken-rs",
  "tokio",
  "toml",
+ "toml_edit",
 ]
 
 [[package]]

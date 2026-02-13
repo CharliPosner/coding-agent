@@ -6,12 +6,15 @@
 //! - Retry logic with exponential backoff for transient errors
 //! - Hooks for self-healing recovery (fix-agent spawning)
 //! - Diagnostic analysis for parsing compiler errors
+//! - Auto-fix application for code errors
 
+mod auto_fix;
 mod diagnostics;
 mod executor;
 
+pub use auto_fix::{apply_fix, AutoFixConfig, FixApplicationResult};
 pub use diagnostics::{
-    parse_compiler_output, extract_fix_info, CompilerType, Diagnostic, DiagnosticLocation,
+    extract_fix_info, parse_compiler_output, CompilerType, Diagnostic, DiagnosticLocation,
     DiagnosticReport, DiagnosticSeverity, DiagnosticSuggestion, FixInfo, FixType,
 };
 pub use executor::{
