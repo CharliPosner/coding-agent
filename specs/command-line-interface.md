@@ -903,7 +903,7 @@ src/
 **Goal:** Know exactly how much context you've used and what it costs.
 
 **Deliverables:**
-- [ ] Token counting with `tiktoken-rs`
+- [x] Token counting with `tiktoken-rs`
 - [ ] Context bar component (bottom of screen)
 - [ ] Color-coded usage (green/yellow/red)
 - [ ] Real-time updates after each message
