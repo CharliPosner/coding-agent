@@ -1273,7 +1273,7 @@ src/
 - [x] Long-wait detection (>10s)
 - [x] Fun fact display during long waits
 - [x] Configurable enable/disable
-- [ ] `/status` command (active tasks, running agents)
+- [x] `/status` command (active tasks, running agents)
 
 **Files to create:**
 ```

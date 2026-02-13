@@ -12,6 +12,7 @@ mod diff;
 mod exit;
 mod help;
 mod history;
+mod status;
 
 use crate::tokens::CostTracker;
 use std::collections::HashMap;
@@ -84,6 +85,7 @@ impl CommandRegistry {
         registry.register(&exit::QuitCommand);
         registry.register(&exit::QCommand);
         registry.register(&history::HistoryCommand);
+        registry.register(&status::StatusCommand);
         registry
     }
 
