@@ -9,7 +9,7 @@ use crate::config::Config;
 use crate::integrations::{Session, SessionManager};
 use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::tools::{create_tool_definitions, execute_tool, tool_definitions_to_api};
-use crate::ui::ContextBar;
+use crate::ui::{ContextBar, ToolResultFormatter};
 use coding_agent_core::{ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition};
 use std::io::Write;
 use std::path::PathBuf;
@@ -74,6 +74,8 @@ pub struct Repl {
     tool_definitions: Vec<ToolDefinition>,
     /// Tool definitions in API format
     tools_api: Vec<Tool>,
+    /// Tool result formatter for displaying results
+    tool_result_formatter: ToolResultFormatter,
 }
 
 impl Repl {
@@ -110,6 +112,9 @@ impl Repl {
         let tool_definitions = create_tool_definitions();
         let tools_api = tool_definitions_to_api(&tool_definitions);
 
+        // Initialize tool result formatter
+        let tool_result_formatter = ToolResultFormatter::new();
+
         Self {
             config,
             registry: CommandRegistry::with_defaults(),
@@ -123,6 +128,7 @@ impl Repl {
             conversation: Vec::new(),
             tool_definitions,
             tools_api,
+            tool_result_formatter,
         }
     }
 
@@ -321,9 +327,16 @@ impl Repl {
 
                 match result {
                     Ok(output) => {
-                        // Display success
+                        // Display success summary
                         let summary = self.summarize_tool_result(&name, &output);
                         self.print_line(&format!("\x1b[32m✓ {}\x1b[0m", summary));
+
+                        // Display formatted result
+                        let formatted = self.tool_result_formatter.format_result(&name, &output);
+                        for line in formatted.lines() {
+                            self.print_line(line);
+                        }
+                        self.print_newline();
 
                         tool_results.push(ContentBlock::ToolResult {
                             tool_use_id: id,
@@ -334,6 +347,7 @@ impl Repl {
                     Err(error) => {
                         // Display error
                         self.print_line(&format!("\x1b[31m✗ Error: {}\x1b[0m", error));
+                        self.print_newline();
 
                         tool_results.push(ContentBlock::ToolResult {
                             tool_use_id: id,
