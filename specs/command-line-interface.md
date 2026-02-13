@@ -972,7 +972,7 @@ src/
 - [x] Permission check before file write/modify
 - [x] Permission prompt UI (Y/n/always/never)
 - [x] "Always" adds to trusted paths in config
-- [ ] Read operations always allowed
+- [x] Read operations always allowed
 - [ ] Permission decision caching (per-session)
 
 **Files to create:**
