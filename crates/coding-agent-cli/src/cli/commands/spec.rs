@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_spec_no_args() {
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let cmd = SpecCommand;
         let (mut ctx, original_dir) = setup_test_env();
 
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_spec_creates_file() {
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let cmd = SpecCommand;
         let (mut ctx, original_dir) = setup_test_env();
 
@@ -363,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_spec_existing_file() {
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let cmd = SpecCommand;
         let (mut ctx, original_dir) = setup_test_env();
 
@@ -389,7 +389,7 @@ mod tests {
 
     #[test]
     fn test_spec_invalid_name() {
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let cmd = SpecCommand;
         let (mut ctx, original_dir) = setup_test_env();
 
