@@ -1271,8 +1271,8 @@ src/
 - [x] Fallback to curated list
 - [x] Thinking messages rotation
 - [x] Long-wait detection (>10s)
-- [ ] Fun fact display during long waits
-- [ ] Configurable enable/disable
+- [x] Fun fact display during long waits
+- [x] Configurable enable/disable
 - [ ] `/status` command (active tasks, running agents)
 
 **Files to create:**

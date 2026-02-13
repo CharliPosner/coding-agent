@@ -20,7 +20,7 @@ pub mod tool_spinner;
 pub use commit_preview::{edit_commit_message, CommitPreview, CommitPreviewResult};
 pub use components::MessageBox;
 pub use context_bar::ContextBar;
-pub use fun_facts::{FactSource, FunFact, FunFactClient};
+pub use fun_facts::{FactSource, FunFact, FunFactCache, FunFactClient};
 pub use long_wait::{LongWaitDetector, DEFAULT_LONG_WAIT_THRESHOLD};
 pub use file_picker::{FileEntry, FilePicker, FilePickerResult};
 pub use output::StyledOutput;
