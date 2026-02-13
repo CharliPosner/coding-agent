@@ -1326,8 +1326,8 @@ src/
 
 **Deliverables:**
 - [x] Agent manager (spawn, track, cancel agents)
-- [ ] Agent state machine (queued → running → complete/failed)
-- [ ] Multi-agent status bar UI
+- [x] Agent state machine (queued → running → complete/failed)
+- [x] Multi-agent status bar UI
 - [ ] Progress tracking per agent
 - [ ] Agent result aggregation
 - [ ] Cancel individual agents
