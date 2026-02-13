@@ -8,6 +8,7 @@ mod commit;
 pub mod config;
 mod context;
 mod cost;
+mod diff;
 mod exit;
 mod help;
 mod history;
@@ -78,6 +79,7 @@ impl CommandRegistry {
         registry.register(&config::ConfigCommand);
         registry.register(&context::ContextCommand);
         registry.register(&cost::CostCommand);
+        registry.register(&diff::DiffCommand);
         registry.register(&exit::ExitCommand);
         registry.register(&history::HistoryCommand);
         registry
@@ -185,6 +187,9 @@ mod tests {
 
         // Cost command exists
         assert!(registry.get("cost").is_some());
+
+        // Diff command exists
+        assert!(registry.get("diff").is_some());
 
         // Exit command exists
         assert!(registry.get("exit").is_some());
