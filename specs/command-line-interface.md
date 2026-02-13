@@ -909,7 +909,7 @@ src/
 - [x] Real-time updates after each message
 - [x] `/cost` command with detailed breakdown
 - [x] `/context` command showing loaded files, working dir
-- [ ] Cost calculation based on model pricing
+- [x] Cost calculation based on model pricing
 
 **Files to create:**
 ```
