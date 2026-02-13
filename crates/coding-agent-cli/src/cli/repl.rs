@@ -14,7 +14,7 @@ use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::tools::{
     create_tool_definitions, tool_definitions_to_api, ToolExecutor, ToolExecutorConfig,
 };
-use crate::ui::{ContextBar, FunFactClient, ThinkingMessages, ToolResultFormatter};
+use crate::ui::{ContextBar, FunFactClient, Theme, ThinkingMessages, ToolExecutionSpinner, ToolResultFormatter};
 use coding_agent_core::{
     ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition,
 };
@@ -102,6 +102,8 @@ pub struct Repl {
     agent_manager: Arc<AgentManager>,
     /// Tool executor for executing tools with error handling and retry logic
     tool_executor: ToolExecutor,
+    /// Theme for styling UI components
+    theme: Theme,
 }
 
 impl Repl {
@@ -167,6 +169,12 @@ impl Repl {
             None
         };
 
+        // Initialize theme based on config
+        let theme_style = app_config
+            .and_then(|cfg| crate::ui::theme::ThemeStyle::from_str(&cfg.theme.style))
+            .unwrap_or(crate::ui::theme::ThemeStyle::Minimal);
+        let theme = Theme::new(theme_style);
+
         // Initialize agent manager
         let agent_manager = Arc::new(AgentManager::new());
 
@@ -216,6 +224,7 @@ impl Repl {
             fun_fact_delay,
             agent_manager,
             tool_executor,
+            theme,
         }
     }
 
@@ -467,37 +476,29 @@ impl Repl {
             // Execute tools and collect results
             let mut tool_results: Vec<ContentBlock> = Vec::new();
             for (id, name, input) in tool_uses {
-                // Display tool call visibility
-                self.print_line(&format!(
-                    "\x1b[33m● {}\x1b[0m",
-                    self.format_tool_call(&name, &input)
-                ));
+                // Create spinner with target if available
+                let spinner = if let Some(target) = self.extract_target(&name, &input) {
+                    ToolExecutionSpinner::with_target(&name, target, self.theme.clone())
+                } else {
+                    ToolExecutionSpinner::new(&name, self.theme.clone())
+                };
 
                 // Execute the tool using ToolExecutor
                 // Note: Permission checking is still done by execute_tool_with_permissions
                 // which is wrapped inside the registered tool functions
                 let execution_result = self.tool_executor.execute(id.clone(), &name, input.clone());
 
-                // Check if retry attempts were made
+                // Handle retry attempts
                 if execution_result.retries > 0 {
-                    self.print_line(&format!(
-                        "\x1b[33m  ↻ Retried {} time{}\x1b[0m",
-                        execution_result.retries,
-                        if execution_result.retries == 1 { "" } else { "s" }
-                    ));
+                    // The spinner will show retry info in the final message
+                    // No need to display intermediate retry messages
                 }
 
                 match execution_result.result {
                     Ok(output) => {
-                        // Display success summary with elapsed time
+                        // Finish spinner with success
                         let summary = self.summarize_tool_result(&name, &output);
-                        let elapsed = execution_result.duration;
-                        let time_str = if elapsed.as_secs() > 0 {
-                            format!(" ({:.1}s)", elapsed.as_secs_f64())
-                        } else {
-                            format!(" ({}ms)", elapsed.as_millis())
-                        };
-                        self.print_line(&format!("\x1b[32m✓ {}{}\x1b[0m", summary, time_str));
+                        spinner.finish_success_with_message(&summary);
 
                         // Display formatted result
                         let formatted = self.tool_result_formatter.format_result(&name, &output);
@@ -513,8 +514,8 @@ impl Repl {
                         });
                     }
                     Err(tool_error) => {
-                        // Display error with category information
-                        self.print_line(&format!("\x1b[31m✗ Error: {}\x1b[0m", tool_error.message));
+                        // Finish spinner with failure
+                        spinner.finish_failed(&tool_error.message);
 
                         // Show suggested fix if available
                         if let Some(suggested_fix) = &tool_error.suggested_fix {
@@ -544,6 +545,33 @@ impl Repl {
         }
 
         Ok(())
+    }
+
+    /// Extract the target (e.g., file path) from a tool call input
+    fn extract_target(&self, name: &str, input: &serde_json::Value) -> Option<String> {
+        match name {
+            "read_file" | "write_file" | "edit_file" => {
+                input.get("path").and_then(|v| v.as_str()).map(|s| s.to_string())
+            }
+            "list_files" => {
+                let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+                Some(path.to_string())
+            }
+            "bash" => {
+                input.get("command").and_then(|v| v.as_str()).map(|cmd| {
+                    // Truncate long commands for display
+                    if cmd.len() > 50 {
+                        format!("{}...", &cmd[..47])
+                    } else {
+                        cmd.to_string()
+                    }
+                })
+            }
+            "code_search" => {
+                input.get("pattern").and_then(|v| v.as_str()).map(|s| format!("'{}'", s))
+            }
+            _ => None,
+        }
     }
 
     /// Format a tool call for display

@@ -2003,10 +2003,10 @@ src/permissions/checker.rs   # Call PermissionPrompt::prompt()
    - [x] Display retry attempts to user
 
 2. **ToolExecutionSpinner Integration**
-   - [ ] Replace simple "● Running..." with `ToolExecutionSpinner::with_target()`
-   - [ ] Show spinner during tool execution
-   - [ ] Call `finish_success()` or `finish_failed()` on completion
-   - [ ] Display elapsed time for long operations
+   - [x] Replace simple "● Running..." with `ToolExecutionSpinner::with_target()`
+   - [x] Show spinner during tool execution
+   - [x] Call `finish_success()` or `finish_failed()` on completion
+   - [x] Display elapsed time for long operations
 
 **Implementation approach:**
 
