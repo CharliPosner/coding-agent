@@ -9,6 +9,7 @@ pub mod progress;
 pub mod spinner;
 pub mod syntax;
 pub mod theme;
+pub mod tool_spinner;
 
 pub use components::MessageBox;
 pub use context_bar::ContextBar;
@@ -17,3 +18,4 @@ pub use progress::ProgressBar;
 pub use spinner::Spinner;
 pub use syntax::SyntaxHighlighter;
 pub use theme::{Color, Theme};
+pub use tool_spinner::{ToolExecutionSpinner, ToolStatus};
