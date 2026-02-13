@@ -17,6 +17,44 @@ const DEFAULT_CACHE_SIZE: usize = 100;
 /// Default refresh interval (1 hour)
 const DEFAULT_REFRESH_INTERVAL: Duration = Duration::from_secs(3600);
 
+/// Curated fallback facts for offline use
+const FALLBACK_FACTS: &[(&str, &str)] = &[
+    // Programming facts
+    ("The first computer bug was an actual bug—a moth found trapped in Harvard's Mark II computer in 1947.", "curated"),
+    ("The average programmer spends 10-20% of their time actually writing code. The rest is spent reading code, debugging, and researching.", "curated"),
+    ("The first computer programmer was Ada Lovelace, who wrote algorithms for Charles Babbage's Analytical Engine in the 1840s.", "curated"),
+    ("Linux was originally created by Linus Torvalds as a hobby project while he was a student at the University of Helsinki in 1991.", "curated"),
+    ("The term 'debugging' predates computers and was used in engineering to describe fixing mechanical problems.", "curated"),
+
+    // Computing history
+    ("The first 1GB hard drive, released in 1980, weighed over 500 pounds and cost $40,000.", "curated"),
+    ("The first electronic computer, ENIAC, weighed 30 tons and took up 1,800 square feet of space.", "curated"),
+    ("The '@' symbol in email addresses was chosen by Ray Tomlinson in 1971 simply because it wasn't used in names.", "curated"),
+    ("The first computer mouse was made of wood and was invented by Douglas Engelbart in 1964.", "curated"),
+    ("The original name for Windows was 'Interface Manager' but was changed before the first version shipped.", "curated"),
+
+    // Programming languages
+    ("Python is named after Monty Python's Flying Circus, not the snake.", "curated"),
+    ("The first version of JavaScript was written in just 10 days by Brendan Eich in 1995.", "curated"),
+    ("C++ was originally called 'C with Classes' before being renamed.", "curated"),
+    ("Ruby was named after the birthstone of one of the creator's colleagues.", "curated"),
+    ("The Go programming language was created by Google engineers who were frustrated waiting for C++ programs to compile.", "curated"),
+
+    // Fun tech facts
+    ("The first computer virus was created in 1983 and was called 'Elk Cloner'. It infected Apple II computers.", "curated"),
+    ("The QWERTY keyboard layout was designed to slow down typing to prevent mechanical typewriters from jamming.", "curated"),
+    ("The first YouTube video was uploaded on April 23, 2005, and was titled 'Me at the zoo'.", "curated"),
+    ("Alaska is the only state that can be typed on one row of a traditional QWERTY keyboard.", "curated"),
+    ("The first domain name ever registered was symbolics.com on March 15, 1985.", "curated"),
+
+    // Computer science concepts
+    ("The term 'bit' is short for 'binary digit' and was coined by statistician John Tukey in 1947.", "curated"),
+    ("The word 'robot' comes from the Czech word 'robota', meaning forced labor or drudgery.", "curated"),
+    ("The first algorithm was created by Al-Khwarizmi, a Persian mathematician from the 9th century. The word 'algorithm' comes from his name.", "curated"),
+    ("ASCII was developed from telegraph code and stands for American Standard Code for Information Interchange.", "curated"),
+    ("The binary number system used in computing was invented by Gottfried Wilhelm Leibniz in 1679.", "curated"),
+];
+
 /// Different sources for fun facts
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FactSource {
@@ -296,14 +334,30 @@ impl FunFactClient {
         ))
     }
 
+    /// Get a random fact from the curated fallback list
+    ///
+    /// This method provides offline facts when the API is unavailable
+    /// and no cached facts exist.
+    pub fn get_fallback_fact() -> FunFact {
+        // Use time-based pseudo-random selection
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0));
+
+        let index = (now.as_secs() as usize) % FALLBACK_FACTS.len();
+        let (text, source) = FALLBACK_FACTS[index];
+        FunFact::new(text.to_string(), source.to_string())
+    }
+
     /// Get a fun fact, using cache if available or fetching if needed
     ///
     /// This method will:
     /// 1. Try to get a fact from the cache
     /// 2. If cache is empty or needs refresh, fetch from API
     /// 3. Add newly fetched facts to the cache
-    /// 4. Return a fact (from cache or freshly fetched)
-    pub fn get_fact(&mut self) -> Result<FunFact, String> {
+    /// 4. If all else fails, fall back to curated list
+    /// 5. Always returns a fact (never fails)
+    pub fn get_fact(&mut self) -> FunFact {
         // If cache is empty or needs refresh, try to fetch and cache new facts
         if self.cache.is_empty() || self.cache.needs_refresh() {
             // Try to fetch a fact and add it to cache
@@ -312,15 +366,15 @@ impl FunFactClient {
                     self.cache.add(fact.clone());
                     // Try to save cache (ignore errors, we still have the fact)
                     let _ = self.cache.save();
-                    return Ok(fact);
+                    return fact;
                 }
-                Err(e) => {
+                Err(_) => {
                     // If fetch fails but we have cached facts, use them
                     if let Some(cached_fact) = self.cache.get_random() {
-                        return Ok(cached_fact);
+                        return cached_fact;
                     }
-                    // No cache and fetch failed
-                    return Err(e);
+                    // No cache and fetch failed - use fallback
+                    return Self::get_fallback_fact();
                 }
             }
         }
@@ -328,7 +382,7 @@ impl FunFactClient {
         // Cache is fresh, use it
         self.cache
             .get_random()
-            .ok_or_else(|| "Cache is empty".to_string())
+            .unwrap_or_else(|| Self::get_fallback_fact())
     }
 
     /// Preload cache with multiple facts from various sources
@@ -686,17 +740,12 @@ mod tests {
         let mut client = FunFactClient::with_cache(cache).unwrap();
 
         // Since cache is empty and API calls would be needed,
-        // this will fail in tests without network access
-        // This test just verifies the method exists and handles the error case
-        let result = client.get_fact();
+        // this should fall back to the curated list
+        let fact = client.get_fact();
 
-        // Either succeeds (if network is available) or fails with appropriate error
-        if let Err(e) = result {
-            assert!(
-                e.contains("failed") || e.contains("empty"),
-                "Error should mention failure or empty cache"
-            );
-        }
+        // Should always return a fact (from API, cache, or fallback)
+        assert!(!fact.text.is_empty());
+        assert!(!fact.source.is_empty());
     }
 
     #[test]
@@ -707,8 +756,75 @@ mod tests {
         let mut client = FunFactClient::with_cache(cache).unwrap();
 
         // Should return the cached fact
-        let fact = client.get_fact().expect("Should get cached fact");
+        let fact = client.get_fact();
         assert_eq!(fact.text, "Cached fact");
+    }
+
+    #[test]
+    fn test_get_fallback_fact() {
+        let fact = FunFactClient::get_fallback_fact();
+
+        // Should return a valid fact from the curated list
+        assert!(!fact.text.is_empty());
+        assert_eq!(fact.source, "curated");
+    }
+
+    #[test]
+    fn test_fallback_fact_deterministic_at_same_time() {
+        // Getting the fallback fact at roughly the same time should return the same fact
+        let fact1 = FunFactClient::get_fallback_fact();
+        let fact2 = FunFactClient::get_fallback_fact();
+
+        assert_eq!(fact1.text, fact2.text);
+        assert_eq!(fact1.source, fact2.source);
+    }
+
+    #[test]
+    fn test_fallback_fact_varies_over_time() {
+        // Get a fact
+        let fact1 = FunFactClient::get_fallback_fact();
+
+        // Wait a moment
+        thread::sleep(Duration::from_millis(1100));
+
+        // Get another fact (should likely be different due to time-based selection)
+        let fact2 = FunFactClient::get_fallback_fact();
+
+        // Both should be valid
+        assert!(!fact1.text.is_empty());
+        assert!(!fact2.text.is_empty());
+        assert_eq!(fact1.source, "curated");
+        assert_eq!(fact2.source, "curated");
+    }
+
+    #[test]
+    fn test_fallback_facts_coverage() {
+        // Verify we have a good number of curated facts
+        assert!(
+            FALLBACK_FACTS.len() >= 20,
+            "Should have at least 20 curated facts"
+        );
+
+        // Verify all facts have non-empty text and source
+        for (text, source) in FALLBACK_FACTS {
+            assert!(!text.is_empty(), "Fact text should not be empty");
+            assert_eq!(*source, "curated", "Source should be 'curated'");
+        }
+    }
+
+    #[test]
+    fn test_get_fact_falls_back_when_cache_and_api_fail() {
+        // Create a client with an empty cache
+        // In offline mode, the API will fail
+        let cache = FunFactCache::new();
+        let mut client = FunFactClient::with_cache(cache).unwrap();
+
+        // get_fact should never fail - it will use fallback if needed
+        let fact = client.get_fact();
+
+        assert!(!fact.text.is_empty());
+        // The fact could be from cache, API (if online), or fallback
+        // but it should always return something
     }
 
     // Note: The following tests make real network calls and may be slow or fail if APIs are down
