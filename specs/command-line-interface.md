@@ -1148,8 +1148,8 @@ src/
 - [x] Smart file grouping (logically related changes)
 - [x] 3-sentence purpose-focused commit message generation
 - [x] Commit message preview and edit
-- [ ] `/diff` command
-- [ ] `/undo` command (revert last commit or file change)
+- [x] `/diff` command
+- [x] `/undo` command (revert last commit or file change)
 
 **Files to create:**
 ```
@@ -1205,9 +1205,9 @@ src/
 **Goal:** Full workflow support for specs, docs, and model switching.
 
 **Deliverables:**
-- [ ] `/spec <name>` - create spec file, enter planning mode
+- [x] `/spec <name>` - create spec file, enter planning mode
 - [ ] Planning mode (different prompt behavior)
-- [ ] Spec file template generation
+- [x] Spec file template generation
 - [ ] `/document <topic>` - Obsidian integration
 - [ ] Vault search functionality
 - [ ] Note creation and update
