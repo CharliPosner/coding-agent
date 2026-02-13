@@ -1266,7 +1266,7 @@ src/
 **Goal:** Delightful experience with entertainment during waits.
 
 **Deliverables:**
-- [ ] Fun facts API integration (`reqwest`)
+- [x] Fun facts API integration (`reqwest`)
 - [ ] Fact caching (local storage)
 - [ ] Fallback to curated list
 - [ ] Thinking messages rotation
