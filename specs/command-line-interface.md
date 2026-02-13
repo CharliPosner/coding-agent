@@ -2061,7 +2061,7 @@ if result.is_success() {
    - [x] Categorize errors via `ToolError::category`
    - [x] For `ErrorCategory::Code`, attempt auto-fix
    - [x] For `ErrorCategory::Network`, retry with backoff (already in ToolExecutor)
-   - [ ] For `ErrorCategory::Permission`, show permission prompt
+   - [x] For `ErrorCategory::Permission`, show permission prompt
    - [ ] For `ErrorCategory::Resource`, suggest alternatives
 
 **Implementation approach:**

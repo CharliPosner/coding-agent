@@ -9,7 +9,7 @@ use super::terminal::Terminal;
 use crate::agents::manager::AgentManager;
 use crate::config::Config;
 use crate::integrations::{Session, SessionManager};
-use crate::permissions::{PermissionChecker, TrustedPaths};
+use crate::permissions::{OperationType, PermissionChecker, PermissionDecision, PermissionPrompt, PermissionResponse, TrustedPaths};
 use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::tools::{
     create_tool_definitions, tool_definitions_to_api, ToolExecutor, ToolExecutorConfig,
@@ -600,6 +600,15 @@ impl Repl {
                             }
                         }
 
+                        // Check if this is a permission error that we can handle
+                        if let crate::tools::ErrorCategory::Permission { ref resource } = tool_error.category {
+                            if let Some(handled) = self.handle_permission_error(resource, &id, &name, input.clone()) {
+                                // Permission was handled (either granted or denied)
+                                tool_results.push(handled);
+                                continue;
+                            }
+                        }
+
                         // Show suggested fix if available and no auto-fix was attempted
                         if let Some(suggested_fix) = &tool_error.suggested_fix {
                             self.print_line(&format!("\x1b[33m  💡 Suggestion: {}\x1b[0m", suggested_fix));
@@ -812,6 +821,195 @@ impl Repl {
                 Err("Auto-fix for syntax errors not yet implemented".to_string())
             }
             _ => Err(format!("Unknown fix type: {}", fix_type)),
+        }
+    }
+
+    /// Handle a permission error by prompting the user for permission.
+    ///
+    /// Returns Some(ContentBlock) with the result if the permission was handled,
+    /// or None if the permission system is not available or the user denied permission.
+    fn handle_permission_error(
+        &mut self,
+        resource: &str,
+        tool_use_id: &str,
+        tool_name: &str,
+        tool_input: serde_json::Value,
+    ) -> Option<ContentBlock> {
+        use std::path::Path;
+
+        // Create a permission prompt
+        let prompt = PermissionPrompt::new(self.theme.clone());
+
+        // Parse the resource path
+        let path = Path::new(resource);
+
+        // Determine operation type from tool name
+        let operation = match tool_name {
+            "write_file" => OperationType::Write,
+            "edit_file" => OperationType::Modify,
+            "bash" => OperationType::Write, // Conservative default
+            _ => OperationType::Write,
+        };
+
+        self.print_newline();
+
+        // Prompt the user
+        match prompt.prompt(path, operation) {
+            Ok(response) => {
+                match response {
+                    PermissionResponse::Yes => {
+                        // Allow once - record in session
+                        if let Some(ref mut checker) = self.permission_checker {
+                            checker.record_decision(path, operation, PermissionDecision::Allowed);
+                        }
+
+                        self.print_line("  → Permission granted for this operation");
+
+                        // Re-run the tool
+                        self.print_line("  → Re-running tool...");
+                        self.print_newline();
+
+                        let spinner = if let Some(target) = self.extract_target(tool_name, &tool_input) {
+                            ToolExecutionSpinner::with_target(tool_name, target, self.theme.clone())
+                        } else {
+                            ToolExecutionSpinner::new(tool_name, self.theme.clone())
+                        };
+
+                        let result = self.tool_executor.execute(tool_use_id, tool_name, tool_input);
+
+                        match result.result {
+                            Ok(output) => {
+                                let summary = self.summarize_tool_result(tool_name, &output);
+                                spinner.finish_success_with_message(&summary);
+
+                                let formatted = self.tool_result_formatter.format_result(tool_name, &output);
+                                for line in formatted.lines() {
+                                    self.print_line(line);
+                                }
+                                self.print_newline();
+
+                                Some(ContentBlock::ToolResult {
+                                    tool_use_id: tool_use_id.to_string(),
+                                    content: output,
+                                    is_error: None,
+                                })
+                            }
+                            Err(error) => {
+                                spinner.finish_failed(&error.message);
+                                self.print_line(&format!("\x1b[31m  ✗ Still failed: {}\x1b[0m", error.message));
+                                self.print_newline();
+
+                                Some(ContentBlock::ToolResult {
+                                    tool_use_id: tool_use_id.to_string(),
+                                    content: format!("Permission granted but operation failed: {}", error.message),
+                                    is_error: Some(true),
+                                })
+                            }
+                        }
+                    }
+                    PermissionResponse::No => {
+                        self.print_line("  → Permission denied for this operation");
+                        self.print_newline();
+
+                        Some(ContentBlock::ToolResult {
+                            tool_use_id: tool_use_id.to_string(),
+                            content: "Permission denied by user".to_string(),
+                            is_error: Some(true),
+                        })
+                    }
+                    PermissionResponse::Always => {
+                        // Add to trusted paths and update config
+                        // Collect the message first, then print after releasing the borrow
+                        let message = if let Some(ref mut checker) = self.permission_checker {
+                            match checker.add_trusted_path(path) {
+                                Ok(path_str) => {
+                                    // TODO: Update config file with new trusted path
+                                    // For now, just record in session
+                                    checker.record_decision(path, operation, PermissionDecision::Allowed);
+                                    format!("  → Added '{}' to trusted paths", path_str)
+                                }
+                                Err(e) => {
+                                    // Still allow for this session
+                                    checker.record_decision(path, operation, PermissionDecision::Allowed);
+                                    format!("\x1b[33m  ⚠ Could not add to trusted paths: {}\x1b[0m", e)
+                                }
+                            }
+                        } else {
+                            "  → Permission checker not available".to_string()
+                        };
+
+                        // Now print the message
+                        self.print_line(&message);
+
+                        // Re-run the tool
+                        self.print_line("  → Re-running tool...");
+                        self.print_newline();
+
+                        let spinner = if let Some(target) = self.extract_target(tool_name, &tool_input) {
+                            ToolExecutionSpinner::with_target(tool_name, target, self.theme.clone())
+                        } else {
+                            ToolExecutionSpinner::new(tool_name, self.theme.clone())
+                        };
+
+                        let result = self.tool_executor.execute(tool_use_id, tool_name, tool_input);
+
+                        match result.result {
+                            Ok(output) => {
+                                let summary = self.summarize_tool_result(tool_name, &output);
+                                spinner.finish_success_with_message(&summary);
+
+                                let formatted = self.tool_result_formatter.format_result(tool_name, &output);
+                                for line in formatted.lines() {
+                                    self.print_line(line);
+                                }
+                                self.print_newline();
+
+                                Some(ContentBlock::ToolResult {
+                                    tool_use_id: tool_use_id.to_string(),
+                                    content: output,
+                                    is_error: None,
+                                })
+                            }
+                            Err(error) => {
+                                spinner.finish_failed(&error.message);
+                                self.print_line(&format!("\x1b[31m  ✗ Still failed: {}\x1b[0m", error.message));
+                                self.print_newline();
+
+                                Some(ContentBlock::ToolResult {
+                                    tool_use_id: tool_use_id.to_string(),
+                                    content: format!("Permission granted but operation failed: {}", error.message),
+                                    is_error: Some(true),
+                                })
+                            }
+                        }
+                    }
+                    PermissionResponse::Never => {
+                        // Record never for this session
+                        if let Some(ref mut checker) = self.permission_checker {
+                            checker.record_decision(path, operation, PermissionDecision::Denied);
+                        }
+
+                        self.print_line("  → Permission permanently denied for this session");
+                        self.print_newline();
+
+                        Some(ContentBlock::ToolResult {
+                            tool_use_id: tool_use_id.to_string(),
+                            content: "Permission permanently denied by user".to_string(),
+                            is_error: Some(true),
+                        })
+                    }
+                }
+            }
+            Err(e) => {
+                self.print_line(&format!("\x1b[31m  ✗ Error reading permission response: {}\x1b[0m", e));
+                self.print_newline();
+
+                Some(ContentBlock::ToolResult {
+                    tool_use_id: tool_use_id.to_string(),
+                    content: format!("Permission prompt failed: {}", e),
+                    is_error: Some(true),
+                })
+            }
         }
     }
 
