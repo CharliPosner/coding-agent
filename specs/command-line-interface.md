@@ -1395,7 +1395,7 @@ This phase establishes a comprehensive test suite using multiple testing approac
 - [x] Terminal output snapshot tests with `insta` + `term-transcript`
 - [x] Full workflow integration tests
 - [x] Visual regression tests for UI components
-- [ ] Performance benchmarks for startup and response times
+- [x] Performance benchmarks for startup and response times
 - [ ] CI/CD integration with test matrix
 
 **Dependencies to add:**

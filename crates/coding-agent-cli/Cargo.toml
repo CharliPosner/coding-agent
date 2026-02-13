@@ -46,3 +46,8 @@ predicates = "3.0"         # Output assertions
 wiremock = "0.5"           # Mock HTTP server for API
 tokio-test = "0.4"         # Async test utilities
 regex = "1.10"             # For ANSI stripping in tests
+criterion = "0.5"          # Performance benchmarking
+
+[[bench]]
+name = "performance"
+harness = false
