@@ -1329,7 +1329,7 @@ src/
 - [x] Agent state machine (queued → running → complete/failed)
 - [x] Multi-agent status bar UI
 - [x] Progress tracking per agent
-- [ ] Agent result aggregation
+- [x] Agent result aggregation
 - [ ] Cancel individual agents
 - [ ] Parallel execution with `tokio`
 

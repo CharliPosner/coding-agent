@@ -302,6 +302,143 @@ impl AgentManager {
 
         count
     }
+
+    /// Waits for multiple agents and collects their results.
+    ///
+    /// Returns a vector of results in the same order as the input agent IDs.
+    /// If any agent fails, the entire operation returns an error with details
+    /// about which agents failed.
+    pub async fn wait_all(&self, ids: Vec<AgentId>) -> Result<Vec<String>, String> {
+        let mut results = Vec::new();
+        let mut errors = Vec::new();
+
+        for id in ids {
+            match self.wait(id).await {
+                Ok(result) => results.push(result),
+                Err(e) => errors.push((id, e)),
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(results)
+        } else {
+            let error_messages: Vec<String> = errors
+                .iter()
+                .map(|(id, e)| format!("Agent {:?}: {}", id, e))
+                .collect();
+            Err(format!(
+                "{} agent(s) failed:\n{}",
+                errors.len(),
+                error_messages.join("\n")
+            ))
+        }
+    }
+
+    /// Waits for multiple agents in parallel and collects their results.
+    ///
+    /// More efficient than `wait_all` as it waits for all agents concurrently.
+    /// Returns a vector of results in the same order as the input agent IDs.
+    pub async fn wait_all_parallel(&self, ids: Vec<AgentId>) -> Result<Vec<String>, String> {
+        let futures: Vec<_> = ids.into_iter().map(|id| self.wait(id)).collect();
+
+        let results = futures::future::join_all(futures).await;
+
+        let mut successes = Vec::new();
+        let mut errors = Vec::new();
+
+        for (idx, result) in results.into_iter().enumerate() {
+            match result {
+                Ok(value) => successes.push(value),
+                Err(e) => errors.push((idx, e)),
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(successes)
+        } else {
+            let error_messages: Vec<String> = errors
+                .iter()
+                .map(|(idx, e)| format!("Agent #{}: {}", idx, e))
+                .collect();
+            Err(format!(
+                "{} agent(s) failed:\n{}",
+                errors.len(),
+                error_messages.join("\n")
+            ))
+        }
+    }
+
+    /// Aggregates results from multiple agents using a custom combiner function.
+    ///
+    /// This is useful when you want to merge results in a specific way,
+    /// such as concatenating strings, merging JSON, etc.
+    pub async fn aggregate_results<F, R>(
+        &self,
+        ids: Vec<AgentId>,
+        initial: R,
+        combiner: F,
+    ) -> Result<R, String>
+    where
+        F: Fn(R, String) -> R,
+        R: Clone,
+    {
+        let results = self.wait_all(ids).await?;
+        Ok(results.into_iter().fold(initial, combiner))
+    }
+
+    /// Waits for any agent to complete and returns its result along with the ID.
+    ///
+    /// This is useful for racing multiple agents and taking the first successful result.
+    /// Returns the agent ID and result of the first agent to complete.
+    pub async fn wait_any(&self, ids: Vec<AgentId>) -> Result<(AgentId, String), String> {
+        if ids.is_empty() {
+            return Err("No agents provided".to_string());
+        }
+
+        let futures: Vec<_> = ids
+            .into_iter()
+            .map(|id| {
+                Box::pin(async move {
+                    let result = self.wait(id).await;
+                    (id, result)
+                })
+            })
+            .collect();
+
+        let (id, result) = futures::future::select_all(futures).await.0;
+
+        match result {
+            Ok(value) => Ok((id, value)),
+            Err(e) => Err(format!("Agent {:?}: {}", id, e)),
+        }
+    }
+
+    /// Waits for the first successful result from multiple agents.
+    ///
+    /// If all agents fail, returns the last error encountered.
+    pub async fn wait_first_success(&self, ids: Vec<AgentId>) -> Result<String, String> {
+        if ids.is_empty() {
+            return Err("No agents provided".to_string());
+        }
+
+        let futures: Vec<_> = ids.into_iter().map(|id| self.wait(id)).collect();
+
+        let results = futures::future::join_all(futures).await;
+
+        // Return the first success
+        for result in &results {
+            if let Ok(value) = result {
+                return Ok(value.clone());
+            }
+        }
+
+        // All failed - return the last error
+        if let Some(Err(e)) = results.last() {
+            Err(e.clone())
+        } else {
+            Err("All agents failed".to_string())
+        }
+    }
 }
 
 impl Default for AgentManager {
@@ -450,6 +587,209 @@ mod tests {
 
         let combined = format!("{}{}{}", r1, r2, r3);
         assert_eq!(combined, "123");
+    }
+
+    #[tokio::test]
+    async fn test_wait_all_success() {
+        let manager = AgentManager::new();
+
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("result1".to_string()));
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Ok("result2".to_string()));
+        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || Ok("result3".to_string()));
+
+        let results = manager.wait_all(vec![id1, id2, id3]).await;
+
+        assert!(results.is_ok());
+        let results = results.unwrap();
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0], "result1");
+        assert_eq!(results[1], "result2");
+        assert_eq!(results[2], "result3");
+    }
+
+    #[tokio::test]
+    async fn test_wait_all_with_failure() {
+        let manager = AgentManager::new();
+
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("result1".to_string()));
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Err("error2".to_string()));
+        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || Ok("result3".to_string()));
+
+        let results = manager.wait_all(vec![id1, id2, id3]).await;
+
+        assert!(results.is_err());
+        let err = results.unwrap_err();
+        assert!(err.contains("1 agent(s) failed"));
+        assert!(err.contains("error2"));
+    }
+
+    #[tokio::test]
+    async fn test_wait_all_parallel_success() {
+        let manager = AgentManager::new();
+
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_millis(50));
+            Ok("fast1".to_string())
+        });
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_millis(50));
+            Ok("fast2".to_string())
+        });
+        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_millis(50));
+            Ok("fast3".to_string())
+        });
+
+        let start = std::time::Instant::now();
+        let results = manager.wait_all_parallel(vec![id1, id2, id3]).await;
+        let elapsed = start.elapsed();
+
+        assert!(results.is_ok());
+        let results = results.unwrap();
+        assert_eq!(results.len(), 3);
+
+        // Should take ~50ms (parallel), not ~150ms (sequential)
+        assert!(elapsed < Duration::from_millis(150));
+    }
+
+    #[tokio::test]
+    async fn test_wait_all_parallel_with_failure() {
+        let manager = AgentManager::new();
+
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("ok1".to_string()));
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Err("fail2".to_string()));
+        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || Err("fail3".to_string()));
+
+        let results = manager.wait_all_parallel(vec![id1, id2, id3]).await;
+
+        assert!(results.is_err());
+        let err = results.unwrap_err();
+        assert!(err.contains("2 agent(s) failed"));
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_results() {
+        let manager = AgentManager::new();
+
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("apple".to_string()));
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Ok("banana".to_string()));
+        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || Ok("cherry".to_string()));
+
+        let result = manager
+            .aggregate_results(
+                vec![id1, id2, id3],
+                String::new(),
+                |acc, s| {
+                    if acc.is_empty() {
+                        s
+                    } else {
+                        format!("{}, {}", acc, s)
+                    }
+                }
+            )
+            .await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "apple, banana, cherry");
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_results_with_failure() {
+        let manager = AgentManager::new();
+
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("ok".to_string()));
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Err("failed".to_string()));
+
+        let result = manager
+            .aggregate_results(
+                vec![id1, id2],
+                0,
+                |acc, s| acc + s.parse::<i32>().unwrap_or(0)
+            )
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wait_any() {
+        let manager = AgentManager::new();
+
+        let id1 = manager.spawn("slow".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_millis(200));
+            Ok("slow-result".to_string())
+        });
+        let id2 = manager.spawn("fast".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_millis(10));
+            Ok("fast-result".to_string())
+        });
+
+        let result = manager.wait_any(vec![id1, id2]).await;
+
+        assert!(result.is_ok());
+        let (winner_id, winner_result) = result.unwrap();
+
+        // The fast one should win
+        assert_eq!(winner_id, id2);
+        assert_eq!(winner_result, "fast-result");
+    }
+
+    #[tokio::test]
+    async fn test_wait_any_empty() {
+        let manager = AgentManager::new();
+
+        let result = manager.wait_any(vec![]).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No agents provided"));
+    }
+
+    #[tokio::test]
+    async fn test_wait_first_success() {
+        let manager = AgentManager::new();
+
+        let id1 = manager.spawn("fail1".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_millis(10));
+            Err("error1".to_string())
+        });
+        let id2 = manager.spawn("success".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_millis(20));
+            Ok("good-result".to_string())
+        });
+        let id3 = manager.spawn("fail2".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_millis(30));
+            Err("error2".to_string())
+        });
+
+        let result = manager.wait_first_success(vec![id1, id2, id3]).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "good-result");
+    }
+
+    #[tokio::test]
+    async fn test_wait_first_success_all_fail() {
+        let manager = AgentManager::new();
+
+        let id1 = manager.spawn("fail1".to_string(), "desc".to_string(), || Err("error1".to_string()));
+        let id2 = manager.spawn("fail2".to_string(), "desc".to_string(), || Err("error2".to_string()));
+
+        let result = manager.wait_first_success(vec![id1, id2]).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        // Should return the last error
+        assert!(err.contains("error2"));
+    }
+
+    #[tokio::test]
+    async fn test_wait_first_success_empty() {
+        let manager = AgentManager::new();
+
+        let result = manager.wait_first_success(vec![]).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No agents provided"));
     }
 
     #[tokio::test]
