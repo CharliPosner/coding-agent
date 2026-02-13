@@ -816,4 +816,165 @@ mod tests {
         let repl_disabled = Repl::new(config_disabled);
         assert!(!repl_disabled.config.show_context_bar);
     }
+
+    #[test]
+    fn test_format_tool_call_read_file() {
+        let repl = Repl::new(ReplConfig::default());
+        let input = serde_json::json!({"path": "src/main.rs"});
+        let formatted = repl.format_tool_call("read_file", &input);
+        assert_eq!(formatted, "Reading src/main.rs");
+    }
+
+    #[test]
+    fn test_format_tool_call_write_file() {
+        let repl = Repl::new(ReplConfig::default());
+        let input = serde_json::json!({"path": "output.txt", "content": "hello"});
+        let formatted = repl.format_tool_call("write_file", &input);
+        assert_eq!(formatted, "Writing output.txt");
+    }
+
+    #[test]
+    fn test_format_tool_call_edit_file() {
+        let repl = Repl::new(ReplConfig::default());
+        let input = serde_json::json!({"path": "test.rs", "search": "old", "replace": "new"});
+        let formatted = repl.format_tool_call("edit_file", &input);
+        assert_eq!(formatted, "Editing test.rs");
+    }
+
+    #[test]
+    fn test_format_tool_call_list_files() {
+        let repl = Repl::new(ReplConfig::default());
+        let input = serde_json::json!({"path": "/home/user"});
+        let formatted = repl.format_tool_call("list_files", &input);
+        assert_eq!(formatted, "Listing files in /home/user");
+    }
+
+    #[test]
+    fn test_format_tool_call_list_files_current_dir() {
+        let repl = Repl::new(ReplConfig::default());
+        let input = serde_json::json!({});
+        let formatted = repl.format_tool_call("list_files", &input);
+        assert_eq!(formatted, "Listing files in .");
+    }
+
+    #[test]
+    fn test_format_tool_call_bash_short() {
+        let repl = Repl::new(ReplConfig::default());
+        let input = serde_json::json!({"command": "ls -la"});
+        let formatted = repl.format_tool_call("bash", &input);
+        assert_eq!(formatted, "Running: ls -la");
+    }
+
+    #[test]
+    fn test_format_tool_call_bash_long() {
+        let repl = Repl::new(ReplConfig::default());
+        let input = serde_json::json!({"command": "find . -name '*.rs' -type f -exec grep -l 'pattern' {} +"});
+        let formatted = repl.format_tool_call("bash", &input);
+        // Should truncate long commands
+        assert!(formatted.starts_with("Running: find . -name '*.rs' -type f -exec grep"));
+        assert!(formatted.ends_with("..."));
+        assert!(formatted.len() <= 60);
+    }
+
+    #[test]
+    fn test_format_tool_call_code_search() {
+        let repl = Repl::new(ReplConfig::default());
+        let input = serde_json::json!({"pattern": "fn main"});
+        let formatted = repl.format_tool_call("code_search", &input);
+        assert_eq!(formatted, "Searching for 'fn main'");
+    }
+
+    #[test]
+    fn test_format_tool_call_unknown_tool() {
+        let repl = Repl::new(ReplConfig::default());
+        let input = serde_json::json!({});
+        let formatted = repl.format_tool_call("unknown_tool", &input);
+        assert_eq!(formatted, "Executing unknown_tool");
+    }
+
+    #[test]
+    fn test_summarize_tool_result_read_file() {
+        let repl = Repl::new(ReplConfig::default());
+        let output = "line1\nline2\nline3";
+        let summary = repl.summarize_tool_result("read_file", output);
+        assert_eq!(summary, "Read 3 lines (17 bytes)");
+    }
+
+    #[test]
+    fn test_summarize_tool_result_write_file() {
+        let repl = Repl::new(ReplConfig::default());
+        let output = "File written successfully";
+        let summary = repl.summarize_tool_result("write_file", output);
+        assert_eq!(summary, "File written successfully");
+    }
+
+    #[test]
+    fn test_summarize_tool_result_edit_file_ok() {
+        let repl = Repl::new(ReplConfig::default());
+        let summary = repl.summarize_tool_result("edit_file", "OK");
+        assert_eq!(summary, "Edit applied");
+    }
+
+    #[test]
+    fn test_summarize_tool_result_edit_file_error() {
+        let repl = Repl::new(ReplConfig::default());
+        let summary = repl.summarize_tool_result("edit_file", "Pattern not found");
+        assert_eq!(summary, "Pattern not found");
+    }
+
+    #[test]
+    fn test_summarize_tool_result_list_files() {
+        let repl = Repl::new(ReplConfig::default());
+        let output = r#"["file1.rs", "file2.rs", "dir1"]"#;
+        let summary = repl.summarize_tool_result("list_files", output);
+        assert_eq!(summary, "Found 3 files/directories");
+    }
+
+    #[test]
+    fn test_summarize_tool_result_bash_no_output() {
+        let repl = Repl::new(ReplConfig::default());
+        let summary = repl.summarize_tool_result("bash", "");
+        assert_eq!(summary, "Command completed (no output)");
+    }
+
+    #[test]
+    fn test_summarize_tool_result_bash_short() {
+        let repl = Repl::new(ReplConfig::default());
+        let output = "total 42";
+        let summary = repl.summarize_tool_result("bash", output);
+        assert_eq!(summary, "total 42");
+    }
+
+    #[test]
+    fn test_summarize_tool_result_bash_long() {
+        let repl = Repl::new(ReplConfig::default());
+        let output = "This is a very long output line that exceeds sixty characters and should be truncated";
+        let summary = repl.summarize_tool_result("bash", output);
+        assert!(summary.ends_with("..."));
+        assert!(summary.len() <= 63); // 60 chars + "..."
+    }
+
+    #[test]
+    fn test_summarize_tool_result_bash_multiline() {
+        let repl = Repl::new(ReplConfig::default());
+        let output = "line1\nline2\nline3\nline4\nline5";
+        let summary = repl.summarize_tool_result("bash", output);
+        assert_eq!(summary, "Output: 5 lines");
+    }
+
+    #[test]
+    fn test_summarize_tool_result_code_search_found() {
+        let repl = Repl::new(ReplConfig::default());
+        let output = "src/main.rs:10\nsrc/lib.rs:25";
+        let summary = repl.summarize_tool_result("code_search", output);
+        assert_eq!(summary, "Found 2 matches");
+    }
+
+    #[test]
+    fn test_summarize_tool_result_code_search_no_matches() {
+        let repl = Repl::new(ReplConfig::default());
+        let output = "No matches found";
+        let summary = repl.summarize_tool_result("code_search", output);
+        assert_eq!(summary, "No matches found");
+    }
 }

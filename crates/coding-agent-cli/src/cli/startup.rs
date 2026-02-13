@@ -62,16 +62,17 @@ impl StartupScreen {
         execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
 
         // Print logo in cyan
+        // Note: In raw mode, \n only moves down, \r\n is needed for proper newline
         execute!(stdout, SetForegroundColor(Color::Cyan))?;
         for line in ASCII_LOGO.lines() {
-            execute!(stdout, Print(format!("   {}\n", line)))?;
+            execute!(stdout, Print(format!("   {}\r\n", line)))?;
         }
         execute!(stdout, ResetColor)?;
 
         // Print version
         execute!(
             stdout,
-            Print("\n   coding-agent v0.1.0\n\n"),
+            Print("\r\n   coding-agent v0.1.0\r\n\r\n"),
             SetForegroundColor(Color::Reset)
         )?;
 
@@ -79,12 +80,13 @@ impl StartupScreen {
         let last_session = self.get_last_session();
 
         // Print options
+        // Note: In raw mode, \n only moves down, \r\n is needed for proper newline
         execute!(
             stdout,
             SetForegroundColor(Color::Yellow),
             Print("   [n]"),
             ResetColor,
-            Print(" New session\n")
+            Print(" New session\r\n")
         )?;
 
         if let Some(ref info) = last_session {
@@ -93,7 +95,7 @@ impl StartupScreen {
                 SetForegroundColor(Color::Yellow),
                 Print("   [r]"),
                 ResetColor,
-                Print(" Resume last session\n")
+                Print(" Resume last session\r\n")
             )?;
 
             // Show session preview with proper indentation
@@ -101,7 +103,7 @@ impl StartupScreen {
                 stdout,
                 SetForegroundColor(Color::DarkGrey),
                 Print(format!(
-                    "       └─ \"{}\" ({})\n",
+                    "       └─ \"{}\" ({})\r\n",
                     truncate_title(&info.title, 40),
                     info.time_ago()
                 )),
@@ -109,7 +111,7 @@ impl StartupScreen {
             )?;
         }
 
-        execute!(stdout, Print("\n"))?;
+        execute!(stdout, Print("\r\n"))?;
 
         execute!(
             stdout,
@@ -119,7 +121,7 @@ impl StartupScreen {
             SetForegroundColor(Color::DarkGrey),
             Print(" Help  "),
             Print("[c]"),
-            Print(" Config\n\n"),
+            Print(" Config\r\n\r\n"),
             ResetColor
         )?;
 

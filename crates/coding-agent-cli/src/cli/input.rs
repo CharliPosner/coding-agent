@@ -81,9 +81,10 @@ impl InputHandler {
                     KeyAction::Submit
                 } else {
                     // First enter: add newline
+                    // In raw mode, need \r\n for proper line break
                     self.buffer.push('\n');
                     self.last_was_enter = true;
-                    println!();
+                    print!("\r\n");
                     let _ = std::io::Write::flush(&mut std::io::stdout());
                     KeyAction::Continue
                 }

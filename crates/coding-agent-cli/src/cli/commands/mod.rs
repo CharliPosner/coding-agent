@@ -81,6 +81,8 @@ impl CommandRegistry {
         registry.register(&cost::CostCommand);
         registry.register(&diff::DiffCommand);
         registry.register(&exit::ExitCommand);
+        registry.register(&exit::QuitCommand);
+        registry.register(&exit::QCommand);
         registry.register(&history::HistoryCommand);
         registry
     }
@@ -193,6 +195,12 @@ mod tests {
 
         // Exit command exists
         assert!(registry.get("exit").is_some());
+
+        // Quit command (alias for exit) exists
+        assert!(registry.get("quit").is_some());
+
+        // Q command (short alias for exit) exists
+        assert!(registry.get("q").is_some());
 
         // History command exists
         assert!(registry.get("history").is_some());
