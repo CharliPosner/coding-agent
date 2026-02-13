@@ -7,6 +7,8 @@ use super::input::{InputHandler, InputResult};
 use super::terminal::Terminal;
 use crate::config::Config;
 use crate::integrations::{Session, SessionManager};
+use crate::tokens::TokenCounter;
+use crate::ui::ContextBar;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -18,6 +20,10 @@ pub struct ReplConfig {
     pub history_path: Option<PathBuf>,
     /// Whether session persistence is enabled
     pub persistence_enabled: bool,
+    /// Whether to show the context bar
+    pub show_context_bar: bool,
+    /// Context window size in tokens
+    pub context_window: u64,
 }
 
 impl Default for ReplConfig {
@@ -26,6 +32,8 @@ impl Default for ReplConfig {
             verbose: false,
             history_path: None,
             persistence_enabled: true,
+            show_context_bar: true,
+            context_window: 200_000,
         }
     }
 }
@@ -37,6 +45,8 @@ impl ReplConfig {
             verbose,
             history_path: Some(PathBuf::from(&config.persistence.path)),
             persistence_enabled: config.persistence.enabled,
+            show_context_bar: config.behavior.show_context_bar,
+            context_window: config.model.context_window as u64,
         }
     }
 }
@@ -48,6 +58,10 @@ pub struct Repl {
     input_handler: InputHandler,
     session: Session,
     session_manager: Option<SessionManager>,
+    /// Token counter for tracking context usage
+    token_counter: TokenCounter,
+    /// Context bar for displaying token usage
+    context_bar: ContextBar,
 }
 
 impl Repl {
@@ -67,12 +81,18 @@ impl Repl {
             None
         };
 
+        // Initialize token counter and context bar
+        let token_counter = TokenCounter::default();
+        let context_bar = ContextBar::new(config.context_window);
+
         Self {
             config,
             registry: CommandRegistry::with_defaults(),
             input_handler: InputHandler::new(),
             session: Session::new(),
             session_manager,
+            token_counter,
+            context_bar,
         }
     }
 
@@ -125,6 +145,34 @@ impl Repl {
         self.session_manager.as_ref()
     }
 
+    /// Get the current context bar
+    pub fn context_bar(&self) -> &ContextBar {
+        &self.context_bar
+    }
+
+    /// Get mutable access to the context bar
+    pub fn context_bar_mut(&mut self) -> &mut ContextBar {
+        &mut self.context_bar
+    }
+
+    /// Update context bar with tokens from a message
+    fn update_context_tokens(&mut self, role: &str, content: &str) {
+        let token_count = self.token_counter.count_message(role, content);
+        self.context_bar.add_tokens(token_count.tokens as u64);
+    }
+
+    /// Display the context bar if enabled
+    fn display_context_bar(&self) {
+        if self.config.show_context_bar {
+            println!("{}", self.context_bar.render());
+        }
+    }
+
+    /// Reset context tracking (for /clear)
+    pub fn reset_context(&mut self) {
+        self.context_bar.reset();
+    }
+
     /// Run the REPL loop
     pub async fn run(&mut self, _terminal: &mut Terminal) -> Result<(), String> {
         self.print_welcome();
@@ -158,8 +206,9 @@ impl Repl {
                             if let Err(e) = self.save_session() {
                                 eprintln!("Warning: Failed to save session: {}", e);
                             }
-                            // Start a new session
+                            // Start a new session and reset context tracking
                             self.session = Session::new();
+                            self.reset_context();
                             Terminal::clear().map_err(|e| e.to_string())?;
                             self.print_welcome();
                         }
@@ -170,8 +219,9 @@ impl Repl {
                             println!("\nError: {}\n", error);
                         }
                         ReplAction::Message(input) => {
-                            // Record the user message
+                            // Record the user message and update token count
                             self.session.add_user_message(&input);
+                            self.update_context_tokens("user", &input);
 
                             // For now, just echo regular messages
                             // In the future, this will send to the AI agent
@@ -180,6 +230,11 @@ impl Repl {
 
                             // Record the agent response (placeholder for now)
                             self.session.add_agent_message(&response);
+                            self.update_context_tokens("assistant", &response);
+
+                            // Display the context bar after the exchange
+                            self.display_context_bar();
+                            println!();
 
                             // Auto-save after each exchange
                             if let Err(e) = self.save_session() {
@@ -318,5 +373,91 @@ mod tests {
             }
             _ => panic!("Expected Error action"),
         }
+    }
+
+    #[test]
+    fn test_context_bar_initial_state() {
+        let repl = Repl::new(ReplConfig::default());
+
+        assert_eq!(repl.context_bar().current_tokens(), 0);
+        assert_eq!(repl.context_bar().max_tokens(), 200_000);
+        assert_eq!(repl.context_bar().percent(), 0);
+    }
+
+    #[test]
+    fn test_context_bar_custom_window_size() {
+        let config = ReplConfig {
+            context_window: 100_000,
+            ..ReplConfig::default()
+        };
+        let repl = Repl::new(config);
+
+        assert_eq!(repl.context_bar().max_tokens(), 100_000);
+    }
+
+    #[test]
+    fn test_update_context_tokens() {
+        let mut repl = Repl::new(ReplConfig::default());
+
+        // Initial state
+        assert_eq!(repl.context_bar().current_tokens(), 0);
+
+        // Update with a user message
+        repl.update_context_tokens("user", "Hello, world!");
+        let tokens_after_user = repl.context_bar().current_tokens();
+        assert!(tokens_after_user > 0, "Should have counted tokens");
+
+        // Update with an assistant message
+        repl.update_context_tokens("assistant", "Hi there! How can I help?");
+        let tokens_after_assistant = repl.context_bar().current_tokens();
+        assert!(
+            tokens_after_assistant > tokens_after_user,
+            "Should have accumulated more tokens"
+        );
+    }
+
+    #[test]
+    fn test_reset_context() {
+        let mut repl = Repl::new(ReplConfig::default());
+
+        // Add some tokens
+        repl.update_context_tokens("user", "Hello!");
+        assert!(repl.context_bar().current_tokens() > 0);
+
+        // Reset context
+        repl.reset_context();
+        assert_eq!(repl.context_bar().current_tokens(), 0);
+    }
+
+    #[test]
+    fn test_context_bar_renders_correctly() {
+        let mut repl = Repl::new(ReplConfig::default());
+
+        // Add some tokens
+        repl.update_context_tokens("user", "Test message");
+
+        let rendered = repl.context_bar().render();
+        assert!(rendered.contains("Context:"));
+        assert!(rendered.contains("%"));
+        assert!(rendered.contains("tokens"));
+    }
+
+    #[test]
+    fn test_show_context_bar_config() {
+        // Test with context bar enabled (default)
+        let config_enabled = ReplConfig {
+            show_context_bar: true,
+            ..ReplConfig::default()
+        };
+        let repl_enabled = Repl::new(config_enabled);
+        assert!(repl_enabled.config.show_context_bar);
+
+        // Test with context bar disabled
+        let config_disabled = ReplConfig {
+            show_context_bar: false,
+            ..ReplConfig::default()
+        };
+        let repl_disabled = Repl::new(config_disabled);
+        assert!(!repl_disabled.config.show_context_bar);
     }
 }

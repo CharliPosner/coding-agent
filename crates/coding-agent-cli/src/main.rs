@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod integrations;
+mod tokens;
 mod ui;
 
 use clap::Parser;

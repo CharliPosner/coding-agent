@@ -906,7 +906,7 @@ src/
 - [x] Token counting with `tiktoken-rs`
 - [x] Context bar component (bottom of screen)
 - [x] Color-coded usage (green/yellow/red)
-- [ ] Real-time updates after each message
+- [x] Real-time updates after each message
 - [ ] `/cost` command with detailed breakdown
 - [ ] `/context` command showing loaded files, working dir
 - [ ] Cost calculation based on model pricing
