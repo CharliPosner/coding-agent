@@ -4,10 +4,18 @@
 //! during operations that take longer than 10 seconds.
 
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::fs;
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 /// Maximum time to wait for an API response
 const API_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Default cache size (number of facts to keep)
+const DEFAULT_CACHE_SIZE: usize = 100;
+
+/// Default refresh interval (1 hour)
+const DEFAULT_REFRESH_INTERVAL: Duration = Duration::from_secs(3600);
 
 /// Different sources for fun facts
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,21 +67,200 @@ impl FunFact {
     }
 }
 
+/// Cache entry with timestamp for expiry tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CachedFact {
+    /// The cached fun fact
+    fact: FunFact,
+    /// Timestamp when this fact was cached
+    cached_at: SystemTime,
+}
+
+/// Cache for storing fun facts locally
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunFactCache {
+    /// List of cached facts
+    facts: Vec<CachedFact>,
+    /// Maximum number of facts to store
+    max_size: usize,
+    /// How long facts are considered fresh (in seconds)
+    refresh_interval: u64,
+}
+
+impl FunFactCache {
+    /// Create a new cache with default settings
+    pub fn new() -> Self {
+        Self {
+            facts: Vec::new(),
+            max_size: DEFAULT_CACHE_SIZE,
+            refresh_interval: DEFAULT_REFRESH_INTERVAL.as_secs(),
+        }
+    }
+
+    /// Create a new cache with custom settings
+    pub fn with_settings(max_size: usize, refresh_interval_secs: u64) -> Self {
+        Self {
+            facts: Vec::new(),
+            max_size,
+            refresh_interval: refresh_interval_secs,
+        }
+    }
+
+    /// Get the default cache file path
+    pub fn default_path() -> Result<PathBuf, String> {
+        let cache_dir = dirs::cache_dir().ok_or("Could not determine cache directory")?;
+        Ok(cache_dir.join("coding-agent").join("fun_facts.json"))
+    }
+
+    /// Load cache from the default path
+    pub fn load() -> Result<Self, String> {
+        let path = Self::default_path()?;
+        Self::load_from(&path)
+    }
+
+    /// Load cache from a specific path
+    pub fn load_from(path: &PathBuf) -> Result<Self, String> {
+        if !path.exists() {
+            return Ok(Self::new());
+        }
+
+        let contents = fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read cache file: {}", e))?;
+
+        serde_json::from_str(&contents)
+            .map_err(|e| format!("Failed to parse cache file: {}", e))
+    }
+
+    /// Save cache to the default path
+    pub fn save(&self) -> Result<(), String> {
+        let path = Self::default_path()?;
+        self.save_to(&path)
+    }
+
+    /// Save cache to a specific path
+    pub fn save_to(&self, path: &PathBuf) -> Result<(), String> {
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create cache directory: {}", e))?;
+        }
+
+        let contents = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("Failed to serialize cache: {}", e))?;
+
+        fs::write(path, contents)
+            .map_err(|e| format!("Failed to write cache file: {}", e))
+    }
+
+    /// Add a fact to the cache
+    pub fn add(&mut self, fact: FunFact) {
+        let cached = CachedFact {
+            fact,
+            cached_at: SystemTime::now(),
+        };
+
+        self.facts.push(cached);
+
+        // Enforce max size by removing oldest entries
+        if self.facts.len() > self.max_size {
+            let excess = self.facts.len() - self.max_size;
+            self.facts.drain(0..excess);
+        }
+    }
+
+    /// Get a random fact from the cache
+    pub fn get_random(&self) -> Option<FunFact> {
+        if self.facts.is_empty() {
+            return None;
+        }
+
+        // Use a simple pseudo-random selection based on current time
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0));
+
+        let index = (now.as_secs() as usize) % self.facts.len();
+        Some(self.facts[index].fact.clone())
+    }
+
+    /// Check if the cache needs refreshing (all entries are old)
+    pub fn needs_refresh(&self) -> bool {
+        if self.facts.is_empty() {
+            return true;
+        }
+
+        let now = SystemTime::now();
+        let refresh_duration = Duration::from_secs(self.refresh_interval);
+
+        // Check if any facts are still fresh
+        self.facts.iter().all(|cached| {
+            now.duration_since(cached.cached_at)
+                .map(|age| age > refresh_duration)
+                .unwrap_or(true)
+        })
+    }
+
+    /// Get the number of facts in the cache
+    pub fn len(&self) -> usize {
+        self.facts.len()
+    }
+
+    /// Check if the cache is empty
+    pub fn is_empty(&self) -> bool {
+        self.facts.is_empty()
+    }
+
+    /// Clear all cached facts
+    pub fn clear(&mut self) {
+        self.facts.clear();
+    }
+}
+
+impl Default for FunFactCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Client for fetching fun facts from various APIs
 #[derive(Debug, Clone)]
 pub struct FunFactClient {
     client: reqwest::blocking::Client,
+    cache: FunFactCache,
 }
 
 impl FunFactClient {
-    /// Create a new fun fact client with default timeout
+    /// Create a new fun fact client with default timeout and load cache
     pub fn new() -> Result<Self, String> {
         let client = reqwest::blocking::Client::builder()
             .timeout(API_TIMEOUT)
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-        Ok(Self { client })
+        // Try to load existing cache, or create a new one if it fails
+        let cache = FunFactCache::load().unwrap_or_else(|_| FunFactCache::new());
+
+        Ok(Self { client, cache })
+    }
+
+    /// Create a new fun fact client with an existing cache
+    pub fn with_cache(cache: FunFactCache) -> Result<Self, String> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(API_TIMEOUT)
+            .build()
+            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+        Ok(Self { client, cache })
+    }
+
+    /// Get a reference to the cache
+    pub fn cache(&self) -> &FunFactCache {
+        &self.cache
+    }
+
+    /// Save the current cache to disk
+    pub fn save_cache(&self) -> Result<(), String> {
+        self.cache.save()
     }
 
     /// Fetch a fun fact from the specified source
@@ -107,6 +294,79 @@ impl FunFactClient {
             "All API sources failed. Last error: {}",
             last_error
         ))
+    }
+
+    /// Get a fun fact, using cache if available or fetching if needed
+    ///
+    /// This method will:
+    /// 1. Try to get a fact from the cache
+    /// 2. If cache is empty or needs refresh, fetch from API
+    /// 3. Add newly fetched facts to the cache
+    /// 4. Return a fact (from cache or freshly fetched)
+    pub fn get_fact(&mut self) -> Result<FunFact, String> {
+        // If cache is empty or needs refresh, try to fetch and cache new facts
+        if self.cache.is_empty() || self.cache.needs_refresh() {
+            // Try to fetch a fact and add it to cache
+            match self.fetch_random() {
+                Ok(fact) => {
+                    self.cache.add(fact.clone());
+                    // Try to save cache (ignore errors, we still have the fact)
+                    let _ = self.cache.save();
+                    return Ok(fact);
+                }
+                Err(e) => {
+                    // If fetch fails but we have cached facts, use them
+                    if let Some(cached_fact) = self.cache.get_random() {
+                        return Ok(cached_fact);
+                    }
+                    // No cache and fetch failed
+                    return Err(e);
+                }
+            }
+        }
+
+        // Cache is fresh, use it
+        self.cache
+            .get_random()
+            .ok_or_else(|| "Cache is empty".to_string())
+    }
+
+    /// Preload cache with multiple facts from various sources
+    ///
+    /// This method fetches facts from all sources and adds them to the cache.
+    /// Useful for warming up the cache in the background.
+    pub fn preload_cache(&mut self, count: usize) -> Result<usize, String> {
+        let sources = [
+            FactSource::UselessFacts,
+            FactSource::Jokes,
+            FactSource::Quotes,
+        ];
+
+        let mut loaded = 0;
+
+        for _ in 0..count {
+            // Rotate through sources
+            let source = sources[loaded % sources.len()];
+
+            match self.fetch(source) {
+                Ok(fact) => {
+                    self.cache.add(fact);
+                    loaded += 1;
+                }
+                Err(_) => {
+                    // Continue trying other sources
+                    continue;
+                }
+            }
+        }
+
+        if loaded > 0 {
+            // Save the cache
+            self.cache.save()?;
+            Ok(loaded)
+        } else {
+            Err("Failed to load any facts".to_string())
+        }
     }
 
     fn fetch_useless_fact(&self) -> Result<FunFact, String> {
@@ -178,6 +438,8 @@ impl Default for FunFactClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+    use std::thread;
 
     #[test]
     fn test_fun_fact_new() {
@@ -190,6 +452,263 @@ mod tests {
     fn test_client_creation() {
         let result = FunFactClient::new();
         assert!(result.is_ok(), "Should create client successfully");
+    }
+
+    // Cache tests
+    #[test]
+    fn test_cache_new() {
+        let cache = FunFactCache::new();
+        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.max_size, DEFAULT_CACHE_SIZE);
+    }
+
+    #[test]
+    fn test_cache_with_settings() {
+        let cache = FunFactCache::with_settings(50, 7200);
+        assert!(cache.is_empty());
+        assert_eq!(cache.max_size, 50);
+        assert_eq!(cache.refresh_interval, 7200);
+    }
+
+    #[test]
+    fn test_cache_add() {
+        let mut cache = FunFactCache::new();
+        let fact = FunFact::new("Test fact", "test-source");
+
+        cache.add(fact.clone());
+        assert_eq!(cache.len(), 1);
+        assert!(!cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_add_multiple() {
+        let mut cache = FunFactCache::new();
+
+        for i in 0..10 {
+            let fact = FunFact::new(format!("Fact {}", i), "test-source");
+            cache.add(fact);
+        }
+
+        assert_eq!(cache.len(), 10);
+    }
+
+    #[test]
+    fn test_cache_max_size_enforcement() {
+        let mut cache = FunFactCache::with_settings(5, 3600);
+
+        // Add more facts than max size
+        for i in 0..10 {
+            let fact = FunFact::new(format!("Fact {}", i), "test-source");
+            cache.add(fact);
+        }
+
+        // Should only keep the last 5
+        assert_eq!(cache.len(), 5);
+    }
+
+    #[test]
+    fn test_cache_get_random() {
+        let mut cache = FunFactCache::new();
+
+        // Empty cache returns None
+        assert!(cache.get_random().is_none());
+
+        // Add some facts
+        for i in 0..5 {
+            let fact = FunFact::new(format!("Fact {}", i), "test-source");
+            cache.add(fact);
+        }
+
+        // Should return a fact
+        let fact = cache.get_random();
+        assert!(fact.is_some());
+        assert!(fact.unwrap().text.starts_with("Fact "));
+    }
+
+    #[test]
+    fn test_cache_get_random_different_over_time() {
+        let mut cache = FunFactCache::new();
+
+        // Add multiple facts
+        for i in 0..10 {
+            let fact = FunFact::new(format!("Fact {}", i), "test-source");
+            cache.add(fact);
+        }
+
+        // Get facts at different times (sleep between calls)
+        let fact1 = cache.get_random().unwrap();
+        thread::sleep(Duration::from_millis(10));
+        let fact2 = cache.get_random().unwrap();
+
+        // Due to time-based selection, these might be different
+        // (not guaranteed, but likely with 10 facts)
+        // Just verify they are both valid
+        assert!(fact1.text.starts_with("Fact "));
+        assert!(fact2.text.starts_with("Fact "));
+    }
+
+    #[test]
+    fn test_cache_needs_refresh_empty() {
+        let cache = FunFactCache::new();
+        assert!(cache.needs_refresh(), "Empty cache should need refresh");
+    }
+
+    #[test]
+    fn test_cache_needs_refresh_fresh() {
+        let mut cache = FunFactCache::with_settings(100, 3600);
+        let fact = FunFact::new("Fresh fact", "test-source");
+        cache.add(fact);
+
+        assert!(
+            !cache.needs_refresh(),
+            "Newly added facts should not need refresh"
+        );
+    }
+
+    #[test]
+    fn test_cache_needs_refresh_old() {
+        let mut cache = FunFactCache::with_settings(100, 0); // 0 second refresh interval
+
+        let fact = FunFact::new("Old fact", "test-source");
+        cache.add(fact);
+
+        // Wait a moment to make it "old"
+        thread::sleep(Duration::from_millis(10));
+
+        assert!(
+            cache.needs_refresh(),
+            "Facts older than refresh interval should need refresh"
+        );
+    }
+
+    #[test]
+    fn test_cache_clear() {
+        let mut cache = FunFactCache::new();
+
+        for i in 0..5 {
+            let fact = FunFact::new(format!("Fact {}", i), "test-source");
+            cache.add(fact);
+        }
+
+        assert_eq!(cache.len(), 5);
+
+        cache.clear();
+
+        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_cache_save_and_load() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cache_path = temp_dir.path().join("fun_facts.json");
+
+        // Create and populate cache
+        let mut cache = FunFactCache::new();
+        cache.add(FunFact::new("Fact 1", "source1"));
+        cache.add(FunFact::new("Fact 2", "source2"));
+
+        // Save cache
+        cache.save_to(&cache_path).expect("Should save cache");
+
+        // Verify file exists
+        assert!(cache_path.exists());
+
+        // Load cache
+        let loaded = FunFactCache::load_from(&cache_path).expect("Should load cache");
+
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded.max_size, cache.max_size);
+        assert_eq!(loaded.refresh_interval, cache.refresh_interval);
+    }
+
+    #[test]
+    fn test_cache_load_nonexistent() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cache_path = temp_dir.path().join("nonexistent.json");
+
+        // Loading nonexistent file should return empty cache
+        let cache = FunFactCache::load_from(&cache_path).expect("Should create new cache");
+
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_load_corrupted() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cache_path = temp_dir.path().join("corrupted.json");
+
+        // Write invalid JSON
+        fs::write(&cache_path, "not valid json").expect("Should write file");
+
+        // Loading corrupted file should fail gracefully
+        let result = FunFactCache::load_from(&cache_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cache_creates_parent_dir() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cache_path = temp_dir
+            .path()
+            .join("nested")
+            .join("dir")
+            .join("fun_facts.json");
+
+        let cache = FunFactCache::new();
+        cache.save_to(&cache_path).expect("Should save cache");
+
+        assert!(cache_path.exists());
+    }
+
+    #[test]
+    fn test_client_with_cache() {
+        let cache = FunFactCache::new();
+        let client = FunFactClient::with_cache(cache);
+
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_client_cache_access() {
+        let mut cache = FunFactCache::new();
+        cache.add(FunFact::new("Test fact", "test-source"));
+
+        let client = FunFactClient::with_cache(cache).unwrap();
+
+        assert_eq!(client.cache().len(), 1);
+    }
+
+    #[test]
+    fn test_client_get_fact_from_empty_cache() {
+        let cache = FunFactCache::new();
+        let mut client = FunFactClient::with_cache(cache).unwrap();
+
+        // Since cache is empty and API calls would be needed,
+        // this will fail in tests without network access
+        // This test just verifies the method exists and handles the error case
+        let result = client.get_fact();
+
+        // Either succeeds (if network is available) or fails with appropriate error
+        if let Err(e) = result {
+            assert!(
+                e.contains("failed") || e.contains("empty"),
+                "Error should mention failure or empty cache"
+            );
+        }
+    }
+
+    #[test]
+    fn test_client_get_fact_from_populated_cache() {
+        let mut cache = FunFactCache::new();
+        cache.add(FunFact::new("Cached fact", "test-source"));
+
+        let mut client = FunFactClient::with_cache(cache).unwrap();
+
+        // Should return the cached fact
+        let fact = client.get_fact().expect("Should get cached fact");
+        assert_eq!(fact.text, "Cached fact");
     }
 
     // Note: The following tests make real network calls and may be slow or fail if APIs are down

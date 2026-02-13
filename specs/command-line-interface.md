@@ -1267,7 +1267,7 @@ src/
 
 **Deliverables:**
 - [x] Fun facts API integration (`reqwest`)
-- [ ] Fact caching (local storage)
+- [x] Fact caching (local storage)
 - [ ] Fallback to curated list
 - [ ] Thinking messages rotation
 - [ ] Long-wait detection (>10s)
