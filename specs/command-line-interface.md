@@ -970,7 +970,7 @@ src/
 - [x] Trusted paths configuration
 - [x] Path matching logic (supports `~`, globs)
 - [x] Permission check before file write/modify
-- [ ] Permission prompt UI (Y/n/always/never)
+- [x] Permission prompt UI (Y/n/always/never)
 - [ ] "Always" adds to trusted paths in config
 - [ ] Read operations always allowed
 - [ ] Permission decision caching (per-session)
