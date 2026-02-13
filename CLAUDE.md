@@ -4,7 +4,12 @@ This file provides context to Claude Code about the coding-agent project.
 
 ## Project Overview
 
-A Rust workshop demonstrating how to build an AI-powered coding assistant. The project uses an event-driven state machine architecture to handle interactions with the Claude API in a predictable, testable manner.
+A Rust workspace with two crates:
+
+1. **`coding-agent-core`** - Event-driven state machine for AI agent interactions (workshop foundation)
+2. **`coding-agent-cli`** - Terminal interface with REPL, session persistence, and token tracking
+
+The project uses a pure state machine architecture to handle Claude API interactions in a predictable, testable manner.
 
 ## Quick Reference
 
@@ -13,7 +18,10 @@ A Rust workshop demonstrating how to build an AI-powered coding assistant. The p
 make build              # Build all examples
 make build-release      # Release build
 
-# Run examples
+# Run CLI
+cargo run -p coding-agent-cli
+
+# Run examples (core crate)
 make run-chat           # Basic chatbot (no tools)
 make run-read           # File reader
 make run-list-files     # Directory listing
@@ -36,14 +44,24 @@ The codebase follows an **event-driven state machine** pattern:
 - **Six states**: WaitingForUserInput → CallingLlm → ProcessingLlmResponse → ExecutingTools → Error → ShuttingDown
 - **Bounded retries** - Exponential backoff (1s, 2s, 3s) with max 3 retries
 
-### Key Files
+### Key Files (Core)
 
 | File | Purpose |
 |------|---------|
-| `src/machine.rs` | State machine implementation (~622 lines, 17 unit tests) |
-| `src/state.rs` | State/Event/Action enums |
-| `src/types.rs` | Anthropic API types and tool definitions |
-| `src/lib.rs` | Public API and legacy Agent struct |
+| `crates/coding-agent-core/src/machine.rs` | State machine implementation (~622 lines) |
+| `crates/coding-agent-core/src/state.rs` | State/Event/Action enums |
+| `crates/coding-agent-core/src/types.rs` | Anthropic API types and tool definitions |
+
+### Key Files (CLI)
+
+| File | Purpose |
+|------|---------|
+| `crates/coding-agent-cli/src/cli/repl.rs` | Main REPL loop |
+| `crates/coding-agent-cli/src/cli/input.rs` | Multi-line input, double-enter |
+| `crates/coding-agent-cli/src/cli/commands/` | Slash command registry |
+| `crates/coding-agent-cli/src/ui/context_bar.rs` | Token usage visualization |
+| `crates/coding-agent-cli/src/tokens/counter.rs` | Token counting (tiktoken-rs) |
+| `crates/coding-agent-cli/src/integrations/specstory.rs` | Session persistence |
 
 ### Examples (Progressive Complexity)
 
@@ -76,4 +94,6 @@ Requires `ANTHROPIC_API_KEY` in environment or `.env` file.
 
 ## Design Documents
 
-See `docs/STATE_MACHINE.md` for the state machine architecture.
+- `docs/STATE_MACHINE.md` - Core state machine architecture
+- `docs/CLI_ARCHITECTURE.md` - CLI components, flow, and implementation status
+- `specs/command-line-interface.md` - Full CLI specification with phases
