@@ -973,7 +973,7 @@ src/
 - [x] Permission prompt UI (Y/n/always/never)
 - [x] "Always" adds to trusted paths in config
 - [x] Read operations always allowed
-- [ ] Permission decision caching (per-session)
+- [x] Permission decision caching (per-session)
 
 **Files to create:**
 ```
