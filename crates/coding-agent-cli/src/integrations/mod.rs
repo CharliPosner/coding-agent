@@ -6,5 +6,5 @@
 pub mod git;
 pub mod specstory;
 
-pub use git::{FileStatus, FileStatusKind, GitError, GitRepo, RepoStatus};
+pub use git::{FileGroup, FileGrouper, FileStatus, FileStatusKind, GitError, GitRepo, GroupReason, RepoStatus, suggest_commit_splits};
 pub use specstory::{MessageRole, Session, SessionInfo, SessionManager, SpecStoryError};
