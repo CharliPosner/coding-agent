@@ -438,6 +438,9 @@ pub fn execute_tool(
 ///
 /// This wraps `execute_tool` with permission checking for write/modify operations.
 /// Read operations and bash commands are executed without permission checks.
+///
+/// Note: This function will return an error with category Permission if user confirmation
+/// is needed. The caller should catch this and prompt the user, then retry the operation.
 pub fn execute_tool_with_permissions(
     definitions: &[ToolDefinition],
     name: &str,
@@ -466,7 +469,7 @@ pub fn execute_tool_with_permissions(
                     Err(format!("Permission denied: Cannot write to {}", path_str))
                 }
                 PermissionDecision::NeedsPrompt => Err(format!(
-                    "Permission required: Writing to {} requires confirmation",
+                    "ErrorCategory::Permission|Writing to {} requires confirmation",
                     path_str
                 )),
             }
@@ -486,7 +489,7 @@ pub fn execute_tool_with_permissions(
                     Err(format!("Permission denied: Cannot edit {}", path_str))
                 }
                 PermissionDecision::NeedsPrompt => Err(format!(
-                    "Permission required: Editing {} requires confirmation",
+                    "ErrorCategory::Permission|Editing {} requires confirmation",
                     path_str
                 )),
             }
@@ -1273,7 +1276,9 @@ mod tests {
         let result =
             execute_tool_with_permissions(&definitions, "write_file", input, Some(&checker));
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Permission required"));
+        let err = result.unwrap_err();
+        // Error should indicate this is a permission error (either with the category marker or the text)
+        assert!(err.contains("ErrorCategory::Permission") || err.contains("requires confirmation"));
     }
 
     #[test]
@@ -1325,7 +1330,9 @@ mod tests {
         let result =
             execute_tool_with_permissions(&definitions, "edit_file", input, Some(&checker));
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Permission required"));
+        let err = result.unwrap_err();
+        // Error should indicate this is a permission error (either with the category marker or the text)
+        assert!(err.contains("ErrorCategory::Permission") || err.contains("requires confirmation"));
     }
 
     #[test]

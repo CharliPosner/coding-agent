@@ -1961,10 +1961,10 @@ jobs:
    - [x] Update `/status` command to query and display agent status
 
 2. **Permission System Activation**
-   - [ ] Wire `PermissionPrompt` into `PermissionChecker`
-   - [ ] When write operation hits untrusted path, show interactive prompt
-   - [ ] Handle "Always" responses by updating config file
-   - [ ] Handle "Never" responses by caching in session permissions
+   - [x] Wire `PermissionPrompt` into `PermissionChecker`
+   - [x] When write operation hits untrusted path, show interactive prompt
+   - [x] Handle "Always" responses by updating config file
+   - [x] Handle "Never" responses by caching in session permissions
 
 **Files to modify:**
 ```

@@ -88,6 +88,8 @@ pub struct Repl {
     tool_result_formatter: ToolResultFormatter,
     /// Permission checker for file operations
     permission_checker: Option<PermissionChecker>,
+    /// Application config (needed for updating trusted paths)
+    app_config: Option<Config>,
     /// Current mode (normal or planning)
     mode: Mode,
     /// Thinking messages manager for rotating messages
@@ -217,6 +219,7 @@ impl Repl {
             tools_api,
             tool_result_formatter,
             permission_checker,
+            app_config: app_config.cloned(),
             mode: Mode::default(),
             thinking_messages,
             fun_fact_client,
@@ -923,10 +926,25 @@ impl Repl {
                         let message = if let Some(ref mut checker) = self.permission_checker {
                             match checker.add_trusted_path(path) {
                                 Ok(path_str) => {
-                                    // TODO: Update config file with new trusted path
-                                    // For now, just record in session
-                                    checker.record_decision(path, operation, PermissionDecision::Allowed);
-                                    format!("  → Added '{}' to trusted paths", path_str)
+                                    // Update the config file with the new trusted path
+                                    if let Some(ref mut config) = self.app_config {
+                                        match config.add_trusted_path(&path_str) {
+                                            Ok(_) => {
+                                                // Successfully added to config
+                                                checker.record_decision(path, operation, PermissionDecision::Allowed);
+                                                format!("  → Added '{}' to trusted paths and saved to config", path_str)
+                                            }
+                                            Err(e) => {
+                                                // Config update failed, but still allow for this session
+                                                checker.record_decision(path, operation, PermissionDecision::Allowed);
+                                                format!("\x1b[33m  ⚠ Added to session but failed to save to config: {}\x1b[0m", e)
+                                            }
+                                        }
+                                    } else {
+                                        // No app config available, just record in session
+                                        checker.record_decision(path, operation, PermissionDecision::Allowed);
+                                        format!("  → Added '{}' to trusted paths for this session", path_str)
+                                    }
                                 }
                                 Err(e) => {
                                     // Still allow for this session
