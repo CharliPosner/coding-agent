@@ -2062,7 +2062,7 @@ if result.is_success() {
    - [x] For `ErrorCategory::Code`, attempt auto-fix
    - [x] For `ErrorCategory::Network`, retry with backoff (already in ToolExecutor)
    - [x] For `ErrorCategory::Permission`, show permission prompt
-   - [ ] For `ErrorCategory::Resource`, suggest alternatives
+   - [x] For `ErrorCategory::Resource`, suggest alternatives
 
 **Implementation approach:**
 

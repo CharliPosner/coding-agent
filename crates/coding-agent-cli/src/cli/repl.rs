@@ -612,6 +612,11 @@ impl Repl {
                             }
                         }
 
+                        // Check if this is a resource error that we can suggest alternatives for
+                        if let crate::tools::ErrorCategory::Resource { ref resource_type } = tool_error.category {
+                            self.handle_resource_error(resource_type, &tool_error.message);
+                        }
+
                         // Show suggested fix if available and no auto-fix was attempted
                         if let Some(suggested_fix) = &tool_error.suggested_fix {
                             self.print_line(&format!("\x1b[33m  💡 Suggestion: {}\x1b[0m", suggested_fix));
@@ -1027,6 +1032,47 @@ impl Repl {
                     content: format!("Permission prompt failed: {}", e),
                     is_error: Some(true),
                 })
+            }
+        }
+    }
+
+    /// Handle a resource error by suggesting alternatives.
+    ///
+    /// This provides actionable alternatives when a resource-related error occurs,
+    /// such as disk full, file not found, or tool not found.
+    fn handle_resource_error(&mut self, resource_type: &str, _error_message: &str) {
+        match resource_type {
+            "disk_full" => {
+                self.print_line("\x1b[33m  💡 Alternatives:\x1b[0m");
+                self.print_line("     • Use 'df -h' to check disk usage");
+                self.print_line("     • Clean up temporary files (e.g., cargo clean, rm /tmp/*)");
+                self.print_line("     • Move files to a different disk with more space");
+                self.print_line("     • Compress old files to free up space");
+            }
+            "out_of_memory" => {
+                self.print_line("\x1b[33m  💡 Alternatives:\x1b[0m");
+                self.print_line("     • Process data in smaller chunks");
+                self.print_line("     • Close other applications to free up memory");
+                self.print_line("     • Use streaming or incremental processing");
+                self.print_line("     • Consider using a machine with more RAM");
+            }
+            "not_found" => {
+                self.print_line("\x1b[33m  💡 Alternatives:\x1b[0m");
+                self.print_line("     • Check the file path for typos");
+                self.print_line("     • Use 'ls' to list available files in the directory");
+                self.print_line("     • Create the file if it should exist");
+                self.print_line("     • Check if the file was moved or deleted");
+            }
+            "tool_not_found" => {
+                self.print_line("\x1b[33m  💡 Available tools:\x1b[0m");
+                let tool_names = self.tool_executor.tool_names();
+                for tool_name in tool_names {
+                    self.print_line(&format!("     • {}", tool_name));
+                }
+            }
+            _ => {
+                // For unknown resource types, just show a generic message
+                self.print_line(&format!("\x1b[33m  💡 Resource error ({}): Consider alternative approaches\x1b[0m", resource_type));
             }
         }
     }
