@@ -12,6 +12,7 @@ mod diff;
 mod exit;
 mod help;
 mod history;
+mod undo;
 
 use crate::tokens::CostTracker;
 use std::collections::HashMap;
@@ -84,6 +85,7 @@ impl CommandRegistry {
         registry.register(&exit::QuitCommand);
         registry.register(&exit::QCommand);
         registry.register(&history::HistoryCommand);
+        registry.register(&undo::UndoCommand);
         registry
     }
 
@@ -204,6 +206,9 @@ mod tests {
 
         // History command exists
         assert!(registry.get("history").is_some());
+
+        // Undo command exists
+        assert!(registry.get("undo").is_some());
 
         // Unknown command doesn't exist
         assert!(registry.get("unknown").is_none());
