@@ -8,7 +8,9 @@ use super::terminal::Terminal;
 use crate::config::Config;
 use crate::integrations::{Session, SessionManager};
 use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
+use crate::tools::{create_tool_definitions, execute_tool, tool_definitions_to_api};
 use crate::ui::ContextBar;
+use coding_agent_core::{ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition};
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -64,11 +66,25 @@ pub struct Repl {
     context_bar: ContextBar,
     /// Cost tracker for detailed token and cost tracking
     cost_tracker: CostTracker,
+    /// API key for Claude
+    api_key: Option<String>,
+    /// Conversation history for API calls
+    conversation: Vec<Message>,
+    /// Tool definitions for Claude to use
+    tool_definitions: Vec<ToolDefinition>,
+    /// Tool definitions in API format
+    tools_api: Vec<Tool>,
 }
 
 impl Repl {
     /// Create a new REPL with the given configuration
     pub fn new(config: ReplConfig) -> Self {
+        // Load .env file if present
+        let _ = dotenvy::dotenv();
+
+        // Get API key from environment
+        let api_key = std::env::var("ANTHROPIC_API_KEY").ok();
+
         // Initialize session manager if persistence is enabled
         let session_manager = if config.persistence_enabled {
             let base_dir = config
@@ -90,6 +106,10 @@ impl Repl {
         // Initialize cost tracker with default model pricing
         let cost_tracker = CostTracker::new(ModelPricing::default_pricing());
 
+        // Initialize tool definitions
+        let tool_definitions = create_tool_definitions();
+        let tools_api = tool_definitions_to_api(&tool_definitions);
+
         Self {
             config,
             registry: CommandRegistry::with_defaults(),
@@ -99,6 +119,10 @@ impl Repl {
             token_counter,
             context_bar,
             cost_tracker,
+            api_key,
+            conversation: Vec::new(),
+            tool_definitions,
+            tools_api,
         }
     }
 
@@ -178,7 +202,7 @@ impl Repl {
     /// Display the context bar if enabled
     fn display_context_bar(&self) {
         if self.config.show_context_bar {
-            println!("{}", self.context_bar.render());
+            self.print_line(&self.context_bar.render());
         }
     }
 
@@ -186,6 +210,243 @@ impl Repl {
     pub fn reset_context(&mut self) {
         self.context_bar.reset();
         self.cost_tracker.reset();
+        self.conversation.clear();
+    }
+
+    /// Call the Claude API with the current conversation
+    fn call_claude(&self, messages: &[Message]) -> Result<MessageResponse, String> {
+        let api_key = self
+            .api_key
+            .as_ref()
+            .ok_or_else(|| "ANTHROPIC_API_KEY not set. Please set it in your environment or .env file.".to_string())?;
+
+        let request = MessageRequest {
+            model: "claude-sonnet-4-20250514".to_string(),
+            max_tokens: 4096,
+            messages: messages.to_vec(),
+            tools: self.tools_api.clone(),
+        };
+
+        let response = ureq::post("https://api.anthropic.com/v1/messages")
+            .set("Content-Type", "application/json")
+            .set("x-api-key", api_key)
+            .set("anthropic-version", "2023-06-01")
+            .send_json(&request)
+            .map_err(|e| format!("API request failed: {}", e))?;
+
+        let msg_response: MessageResponse = response
+            .into_json()
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        Ok(msg_response)
+    }
+
+    /// Process a conversation turn, handling tool use in a loop until done
+    fn process_conversation(&mut self) -> Result<(), String> {
+        const MAX_TOOL_ITERATIONS: usize = 10;
+        let mut iteration = 0;
+
+        loop {
+            iteration += 1;
+            if iteration > MAX_TOOL_ITERATIONS {
+                return Err("Maximum tool iterations reached. Stopping to prevent infinite loop.".to_string());
+            }
+
+            // Show thinking indicator
+            self.print_newline();
+            self.print_line("Thinking...");
+
+            // Call Claude API
+            let response = match self.call_claude(&self.conversation) {
+                Ok(r) => r,
+                Err(e) => {
+                    // Clear the "Thinking..." line
+                    print!("\x1b[A\x1b[2K\r");
+                    let _ = std::io::stdout().flush();
+                    return Err(e);
+                }
+            };
+
+            // Clear the "Thinking..." line
+            print!("\x1b[A\x1b[2K\r");
+            let _ = std::io::stdout().flush();
+
+            // Process the response
+            let mut response_text = String::new();
+            let mut tool_uses: Vec<(String, String, serde_json::Value)> = Vec::new();
+
+            for block in &response.content {
+                match block {
+                    ContentBlock::Text { text } => {
+                        response_text.push_str(text);
+                    }
+                    ContentBlock::ToolUse { id, name, input } => {
+                        tool_uses.push((id.clone(), name.clone(), input.clone()));
+                    }
+                    _ => {}
+                }
+            }
+
+            // Display any text response
+            if !response_text.is_empty() {
+                self.print_newline();
+                for line in response_text.lines() {
+                    self.print_line(line);
+                }
+                self.print_newline();
+            }
+
+            // Add assistant response to conversation history
+            self.conversation.push(Message::assistant(response.content.clone()));
+
+            // Update token counts
+            if !response_text.is_empty() {
+                self.session.add_agent_message(&response_text);
+                self.update_context_tokens("assistant", &response_text);
+            }
+
+            // If there are no tool uses, we're done
+            if tool_uses.is_empty() {
+                break;
+            }
+
+            // Execute tools and collect results
+            let mut tool_results: Vec<ContentBlock> = Vec::new();
+            for (id, name, input) in tool_uses {
+                // Display tool call visibility
+                self.print_line(&format!("\x1b[33m● {}\x1b[0m", self.format_tool_call(&name, &input)));
+
+                // Execute the tool
+                let result = execute_tool(&self.tool_definitions, &name, input);
+
+                match result {
+                    Ok(output) => {
+                        // Display success
+                        let summary = self.summarize_tool_result(&name, &output);
+                        self.print_line(&format!("\x1b[32m✓ {}\x1b[0m", summary));
+
+                        tool_results.push(ContentBlock::ToolResult {
+                            tool_use_id: id,
+                            content: output,
+                            is_error: None,
+                        });
+                    }
+                    Err(error) => {
+                        // Display error
+                        self.print_line(&format!("\x1b[31m✗ Error: {}\x1b[0m", error));
+
+                        tool_results.push(ContentBlock::ToolResult {
+                            tool_use_id: id,
+                            content: error,
+                            is_error: Some(true),
+                        });
+                    }
+                }
+            }
+
+            // Add tool results as a user message
+            self.conversation.push(Message {
+                role: "user".to_string(),
+                content: tool_results,
+            });
+
+            // Check if Claude wants to stop
+            if response.stop_reason.as_deref() == Some("end_turn") {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Format a tool call for display
+    fn format_tool_call(&self, name: &str, input: &serde_json::Value) -> String {
+        match name {
+            "read_file" => {
+                let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+                format!("Reading {}", path)
+            }
+            "write_file" => {
+                let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+                format!("Writing {}", path)
+            }
+            "edit_file" => {
+                let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+                format!("Editing {}", path)
+            }
+            "list_files" => {
+                let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+                format!("Listing files in {}", path)
+            }
+            "bash" => {
+                let command = input.get("command").and_then(|v| v.as_str()).unwrap_or("?");
+                // Truncate long commands
+                if command.len() > 50 {
+                    format!("Running: {}...", &command[..47])
+                } else {
+                    format!("Running: {}", command)
+                }
+            }
+            "code_search" => {
+                let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
+                format!("Searching for '{}'", pattern)
+            }
+            _ => format!("Executing {}", name),
+        }
+    }
+
+    /// Summarize a tool result for display
+    fn summarize_tool_result(&self, name: &str, output: &str) -> String {
+        match name {
+            "read_file" => {
+                let lines = output.lines().count();
+                let bytes = output.len();
+                format!("Read {} lines ({} bytes)", lines, bytes)
+            }
+            "write_file" => output.to_string(),
+            "edit_file" => {
+                if output == "OK" {
+                    "Edit applied".to_string()
+                } else {
+                    output.to_string()
+                }
+            }
+            "list_files" => {
+                // Count items in the JSON array
+                if let Ok(files) = serde_json::from_str::<Vec<String>>(output) {
+                    format!("Found {} files/directories", files.len())
+                } else {
+                    "Listed files".to_string()
+                }
+            }
+            "bash" => {
+                let lines = output.lines().count();
+                if lines == 0 {
+                    "Command completed (no output)".to_string()
+                } else if lines == 1 {
+                    // Show short output directly
+                    if output.len() <= 60 {
+                        output.to_string()
+                    } else {
+                        format!("{}...", &output[..57])
+                    }
+                } else {
+                    format!("Output: {} lines", lines)
+                }
+            }
+            "code_search" => {
+                if output == "No matches found" {
+                    output.to_string()
+                } else {
+                    let lines = output.lines().count();
+                    format!("Found {} matches", lines)
+                }
+            }
+            _ => {
+                let lines = output.lines().count();
+                format!("Result: {} lines", lines)
+            }
+        }
     }
 
     /// Run the REPL loop
@@ -211,15 +472,17 @@ impl Repl {
                         ReplAction::Exit => {
                             // Save session before exiting
                             if let Err(e) = self.save_session() {
-                                eprintln!("Warning: Failed to save session: {}", e);
+                                eprint!("Warning: Failed to save session: {}\r\n", e);
                             }
-                            println!("\nGoodbye!\n");
+                            self.print_newline();
+                            self.print_line("Goodbye!");
+                            self.print_newline();
                             break;
                         }
                         ReplAction::Clear => {
                             // Save session before clearing
                             if let Err(e) = self.save_session() {
-                                eprintln!("Warning: Failed to save session: {}", e);
+                                eprint!("Warning: Failed to save session: {}\r\n", e);
                             }
                             // Start a new session and reset context tracking
                             self.session = Session::new();
@@ -228,28 +491,36 @@ impl Repl {
                             self.print_welcome();
                         }
                         ReplAction::Output(output) => {
-                            println!("\n{}\n", output);
+                            self.print_newline();
+                            // Print output line by line with proper \r\n
+                            for line in output.lines() {
+                                self.print_line(line);
+                            }
+                            self.print_newline();
                         }
                         ReplAction::Error(error) => {
-                            println!("\nError: {}\n", error);
+                            self.print_newline();
+                            self.print_line(&format!("Error: {}", error));
+                            self.print_newline();
                         }
                         ReplAction::Message(input) => {
                             // Record the user message and update token count
                             self.session.add_user_message(&input);
                             self.update_context_tokens("user", &input);
 
-                            // For now, just echo regular messages
-                            // In the future, this will send to the AI agent
-                            let response = format!("You entered:\n{}", input);
-                            println!("\n{}\n", response);
+                            // Add user message to conversation history
+                            self.conversation.push(Message::user(&input));
 
-                            // Record the agent response (placeholder for now)
-                            self.session.add_agent_message(&response);
-                            self.update_context_tokens("assistant", &response);
+                            // Process the conversation with tool use loop
+                            if let Err(e) = self.process_conversation() {
+                                self.print_newline();
+                                self.print_line(&format!("Error: {}", e));
+                                self.print_newline();
+                            }
 
                             // Display the context bar after the exchange
                             self.display_context_bar();
-                            println!();
+                            self.print_newline();
 
                             // Auto-save after each exchange
                             if let Err(e) = self.save_session() {
@@ -264,18 +535,24 @@ impl Repl {
                     }
                 }
                 Ok(InputResult::Cancelled) => {
-                    println!("\n[Input cleared]\n");
+                    self.print_newline();
+                    self.print_line("[Input cleared]");
+                    self.print_newline();
                 }
                 Ok(InputResult::Exit) => {
                     // Save session before exiting
                     if let Err(e) = self.save_session() {
-                        eprintln!("Warning: Failed to save session: {}", e);
+                        eprint!("Warning: Failed to save session: {}\r\n", e);
                     }
-                    println!("\nGoodbye!\n");
+                    self.print_newline();
+                    self.print_line("Goodbye!");
+                    self.print_newline();
                     break;
                 }
                 Err(e) => {
-                    eprintln!("\nError reading input: {}\n", e);
+                    self.print_newline();
+                    self.print_line(&format!("Error reading input: {}", e));
+                    self.print_newline();
                 }
             }
         }
@@ -283,11 +560,24 @@ impl Repl {
         Ok(())
     }
 
+    /// Print a line with proper raw mode handling (\r\n instead of just \n)
+    fn print_line(&self, text: &str) {
+        print!("{}\r\n", text);
+        let _ = std::io::stdout().flush();
+    }
+
+    /// Print an empty line
+    fn print_newline(&self) {
+        print!("\r\n");
+        let _ = std::io::stdout().flush();
+    }
+
     /// Print the welcome message
     fn print_welcome(&self) {
-        println!("coding-agent v0.1.0");
-        println!("Type your message and press Enter twice to submit.");
-        println!("Use /help for available commands.\n");
+        self.print_line("coding-agent v0.1.0");
+        self.print_line("Type your message and press Enter twice to submit.");
+        self.print_line("Use /help for available commands.");
+        self.print_newline();
     }
 
     /// Process a line of input, returning the action to take
@@ -295,6 +585,13 @@ impl Repl {
         // Check if this is a command
         if let Some((cmd_name, args)) = parse_command(input) {
             return self.execute_command(cmd_name, &args);
+        }
+
+        // Check if user tried to enter a command but it was invalid (just "/" or "/ ")
+        if input.trim().starts_with('/') {
+            return ReplAction::Error(
+                "Invalid command. Type /help for available commands.".to_string(),
+            );
         }
 
         // Regular message
@@ -393,6 +690,30 @@ mod tests {
                 assert!(msg.contains("/help"));
             }
             _ => panic!("Expected Error action"),
+        }
+    }
+
+    #[test]
+    fn test_slash_only_is_invalid_command() {
+        let repl = Repl::new(ReplConfig::default());
+
+        // Just "/" should be an error, not a message
+        let action = repl.process_input("/");
+        match action {
+            ReplAction::Error(msg) => {
+                assert!(msg.contains("Invalid command"));
+                assert!(msg.contains("/help"));
+            }
+            _ => panic!("Expected Error action for just '/'"),
+        }
+
+        // "/ " (slash with space) should also be an error
+        let action = repl.process_input("/ ");
+        match action {
+            ReplAction::Error(msg) => {
+                assert!(msg.contains("Invalid command"));
+            }
+            _ => panic!("Expected Error action for '/ '"),
         }
     }
 

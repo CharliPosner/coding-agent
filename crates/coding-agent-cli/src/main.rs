@@ -1,7 +1,10 @@
+mod agents;
 mod cli;
 mod config;
 mod integrations;
+mod permissions;
 mod tokens;
+mod tools;
 mod ui;
 
 use clap::Parser;

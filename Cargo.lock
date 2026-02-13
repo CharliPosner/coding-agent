@@ -199,9 +199,11 @@ dependencies = [
  "console",
  "crossterm",
  "dirs",
+ "dotenvy",
  "git2",
  "glob",
  "indicatif",
+ "schemars",
  "serde",
  "serde_json",
  "syntect",
@@ -211,6 +213,8 @@ dependencies = [
  "tokio",
  "toml",
  "toml_edit",
+ "ureq",
+ "walkdir",
 ]
 
 [[package]]

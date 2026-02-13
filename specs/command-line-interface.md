@@ -1076,7 +1076,68 @@ src/
 
 ---
 
-### Phase 8: Git Integration
+### Phase 8: Tool Integration
+
+**Goal:** Connect Claude to actual coding tools so it can read, write, and execute code.
+
+**Deliverables:**
+- [x] Wire tools from `coding-agent-core` into CLI's API calls
+- [ ] `read_file` tool - Read file contents
+- [ ] `write_file` tool - Create/overwrite files
+- [ ] `edit_file` tool - Make targeted edits to existing files
+- [ ] `list_files` tool - List directory contents
+- [ ] `bash` tool - Execute shell commands
+- [ ] `code_search` tool - Search codebase with ripgrep patterns
+- [ ] Tool result display in REPL (formatted, syntax highlighted)
+- [ ] Tool call visibility (show "Reading src/main.rs..." etc.)
+- [ ] Permission checks before write operations (use Phase 6 system)
+
+**Files to modify:**
+```
+src/
+├── cli/
+│   └── repl.rs            # Add tools to API calls, display tool results
+├── tools/
+│   ├── mod.rs             # Re-export tool definitions
+│   └── definitions.rs     # Tool schemas for Claude API
+```
+
+**Tests:**
+
+| Test | Type | What it verifies |
+|------|------|------------------|
+| `test_read_file_tool` | Integration | Claude can read file and discuss contents |
+| `test_write_file_tool` | Integration | Claude can create new file |
+| `test_edit_file_tool` | Integration | Claude can modify existing file |
+| `test_bash_tool` | Integration | Claude can run shell commands |
+| `test_list_files_tool` | Integration | Claude can explore directory structure |
+| `test_code_search_tool` | Integration | Claude can search for patterns |
+| `test_tool_permission_denied` | Integration | Write to untrusted path prompts user |
+| `test_tool_result_display` | Unit | Tool results formatted correctly |
+| `test_multi_tool_conversation` | Integration | Claude uses multiple tools in sequence |
+
+**Edge cases to handle:**
+- Large file (truncate with message, or refuse)
+- Binary file (detect and refuse to read as text)
+- File doesn't exist (clear error message)
+- Permission denied (use permission system)
+- Tool timeout (bash commands that hang)
+- Dangerous commands (rm -rf, etc.) - warn or block
+
+**Stopping condition:**
+```
+✓ "Read src/main.rs and summarize it" → Claude reads and discusses file
+✓ "Create a hello.txt file with 'Hello World'" → File created
+✓ "Run cargo test" → Tests execute, output shown
+✓ "Find all TODO comments in the codebase" → Search results displayed
+✓ Tool calls shown with status (● Reading... ✓ Read 150 lines)
+✓ Write operations respect permission system
+✓ All tests pass
+```
+
+---
+
+### Phase 9: Git Integration
 
 **Goal:** Smart commits with purpose-focused messages.
 
@@ -1139,7 +1200,7 @@ src/
 
 ---
 
-### Phase 9: Workflow Commands
+### Phase 10: Workflow Commands
 
 **Goal:** Full workflow support for specs, docs, and model switching.
 
@@ -1200,7 +1261,7 @@ src/
 
 ---
 
-### Phase 10: Fun Facts & Polish
+### Phase 11: Fun Facts & Polish
 
 **Goal:** Delightful experience with entertainment during waits.
 
@@ -1259,7 +1320,7 @@ src/
 
 ---
 
-### Phase 11: Multi-Agent Status Bar
+### Phase 12: Multi-Agent Status Bar
 
 **Goal:** Visual orchestration of parallel agent tasks.
 
@@ -1312,6 +1373,571 @@ src/
 ✓ Failed agents show error state
 ✓ Status bar handles many agents gracefully
 ✓ All tests pass, snapshots approved
+```
+
+---
+
+### Phase 13: Comprehensive End-to-End Testing
+
+**Goal:** Full integration testing that validates the entire CLI works correctly—graphics, LLM interactions, tool calls, commands, and user workflows.
+
+**Testing Strategy Overview:**
+
+This phase establishes a comprehensive test suite using multiple testing approaches:
+1. **Interactive PTY Testing** - Simulate real terminal sessions
+2. **Snapshot Testing** - Capture and compare terminal output
+3. **Mock LLM Server** - Test API interactions without costs
+4. **Workflow Integration** - End-to-end user journey tests
+
+**Deliverables:**
+- [ ] PTY test harness using `expectrl` or `rexpect`
+- [ ] Mock Claude API server for deterministic testing
+- [ ] Terminal output snapshot tests with `insta` + `term-transcript`
+- [ ] Full workflow integration tests
+- [ ] Visual regression tests for UI components
+- [ ] Performance benchmarks for startup and response times
+- [ ] CI/CD integration with test matrix
+
+**Dependencies to add:**
+```toml
+[dev-dependencies]
+expectrl = "0.7"           # PTY-based interactive testing
+insta = "1.34"             # Snapshot testing
+term-transcript = "0.3"    # Terminal output capture with ANSI
+assert_cmd = "2.0"         # CLI subprocess testing
+predicates = "3.0"         # Output assertions
+wiremock = "0.6"           # Mock HTTP server for API
+tokio-test = "0.4"         # Async test utilities
+```
+
+**Files to create:**
+```
+tests/
+├── e2e/
+│   ├── mod.rs
+│   ├── harness.rs           # Test harness setup (mock server, PTY)
+│   ├── mock_claude.rs       # Mock Claude API responses
+│   ├── pty_helpers.rs       # PTY interaction utilities
+│   │
+│   ├── startup_test.rs      # Startup screen tests
+│   ├── input_test.rs        # Multi-line input, double-enter
+│   ├── commands_test.rs     # All slash commands
+│   ├── conversation_test.rs # Multi-turn LLM interactions
+│   ├── tools_test.rs        # Tool execution flows
+│   ├── session_test.rs      # Save/resume workflows
+│   ├── context_bar_test.rs  # Token tracking display
+│   ├── error_recovery_test.rs # Self-healing flows
+│   └── full_workflow_test.rs  # Complete user journeys
+│
+├── snapshots/               # insta snapshot files
+│   ├── startup_screen.snap
+│   ├── help_output.snap
+│   ├── context_bar_states.snap
+│   ├── tool_execution.snap
+│   └── error_messages.snap
+│
+└── fixtures/
+    ├── mock_responses/      # Canned Claude API responses
+    │   ├── simple_response.json
+    │   ├── tool_call_response.json
+    │   ├── multi_turn_conversation.json
+    │   └── streaming_chunks.json
+    └── test_projects/       # Minimal test codebases
+        └── rust_project/
+            ├── Cargo.toml
+            └── src/main.rs
+```
+
+---
+
+#### 13.1: PTY Test Harness
+
+**Purpose:** Test interactive terminal behavior in a real pseudo-terminal.
+
+**Implementation:**
+```rust
+// tests/e2e/harness.rs
+use expectrl::{Session, Eof};
+use std::time::Duration;
+
+pub struct CliTestSession {
+    session: Session,
+}
+
+impl CliTestSession {
+    pub fn spawn() -> Result<Self, Box<dyn std::error::Error>> {
+        let session = expectrl::spawn("cargo run -p coding-agent-cli")?;
+        Ok(Self { session })
+    }
+
+    pub fn expect_startup_screen(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Wait for ASCII logo
+        self.session.expect("CODE")?;
+        self.session.expect("[n] New session")?;
+        self.session.expect("[r] Resume last session")?;
+        Ok(())
+    }
+
+    pub fn select_new_session(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.session.send_line("n")?;
+        self.session.expect(">")?; // Wait for prompt
+        Ok(())
+    }
+
+    pub fn send_message(&mut self, msg: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.session.send_line(msg)?;
+        self.session.send_line("")?; // Double-enter to submit
+        Ok(())
+    }
+
+    pub fn expect_response(&mut self, timeout: Duration) -> Result<String, Box<dyn std::error::Error>> {
+        self.session.set_expect_timeout(Some(timeout));
+        let output = self.session.expect(">")?; // Wait for next prompt
+        Ok(String::from_utf8_lossy(output.as_bytes()).to_string())
+    }
+
+    pub fn run_command(&mut self, cmd: &str) -> Result<String, Box<dyn std::error::Error>> {
+        self.session.send_line(cmd)?;
+        self.session.send_line("")?;
+        self.expect_response(Duration::from_secs(5))
+    }
+}
+```
+
+**Tests:**
+
+| Test | What it verifies |
+|------|------------------|
+| `test_pty_startup_displays_logo` | ASCII art renders correctly in PTY |
+| `test_pty_double_enter_submits` | Input only submits on double-enter |
+| `test_pty_ctrl_c_cancels` | Ctrl+C clears current input |
+| `test_pty_ctrl_d_exits` | Ctrl+D exits cleanly |
+| `test_pty_terminal_resize` | UI reflows on resize |
+| `test_pty_raw_mode_cleanup` | Terminal restored after exit/crash |
+| `test_pty_unicode_rendering` | Emoji and CJK display correctly |
+| `test_pty_long_output_scrolls` | Long responses scroll properly |
+
+---
+
+#### 13.2: Mock Claude API Server
+
+**Purpose:** Test LLM interactions without hitting real API (cost-free, deterministic).
+
+**Implementation:**
+```rust
+// tests/e2e/mock_claude.rs
+use wiremock::{MockServer, Mock, ResponseTemplate};
+use wiremock::matchers::{method, path, header};
+
+pub struct MockClaudeServer {
+    server: MockServer,
+}
+
+impl MockClaudeServer {
+    pub async fn start() -> Self {
+        let server = MockServer::start().await;
+        Self { server }
+    }
+
+    pub fn url(&self) -> String {
+        self.server.uri()
+    }
+
+    pub async fn mock_simple_response(&self, content: &str) {
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg_test123",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": content}],
+                "model": "claude-3-opus-20240229",
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 10, "output_tokens": 20}
+            })))
+            .mount(&self.server)
+            .await;
+    }
+
+    pub async fn mock_tool_call(&self, tool_name: &str, tool_input: serde_json::Value) {
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg_test456",
+                "type": "message",
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "tool_call_123",
+                    "name": tool_name,
+                    "input": tool_input
+                }],
+                "model": "claude-3-opus-20240229",
+                "stop_reason": "tool_use",
+                "usage": {"input_tokens": 15, "output_tokens": 30}
+            })))
+            .mount(&self.server)
+            .await;
+    }
+
+    pub async fn mock_streaming_response(&self, chunks: Vec<&str>) {
+        // SSE streaming format
+        let body = chunks.iter()
+            .map(|chunk| format!("data: {{\"type\":\"content_block_delta\",\"delta\":{{\"text\":\"{}\"}}}}\n\n", chunk))
+            .collect::<String>();
+
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .and(header("accept", "text/event-stream"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_string(body)
+                .insert_header("content-type", "text/event-stream"))
+            .mount(&self.server)
+            .await;
+    }
+
+    pub async fn mock_rate_limit(&self) {
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(429)
+                .set_body_json(serde_json::json!({
+                    "type": "error",
+                    "error": {"type": "rate_limit_error", "message": "Rate limited"}
+                })))
+            .mount(&self.server)
+            .await;
+    }
+
+    pub async fn mock_network_error(&self) {
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&self.server)
+            .await;
+    }
+}
+```
+
+**Tests:**
+
+| Test | What it verifies |
+|------|------------------|
+| `test_api_simple_conversation` | Basic request/response flow |
+| `test_api_multi_turn_context` | Conversation history sent correctly |
+| `test_api_tool_call_execution` | Tool calls parsed and executed |
+| `test_api_tool_result_sent` | Tool results returned to Claude |
+| `test_api_streaming_display` | Streaming responses render in real-time |
+| `test_api_rate_limit_retry` | 429 triggers exponential backoff |
+| `test_api_network_error_recovery` | Network errors handled gracefully |
+| `test_api_token_counting_accurate` | Usage tracked matches API response |
+
+---
+
+#### 13.3: Terminal Output Snapshots
+
+**Purpose:** Capture terminal output including ANSI colors for visual regression testing.
+
+**Implementation:**
+```rust
+// tests/e2e/snapshots.rs
+use term_transcript::{Transcript, UserInput, ShellOptions};
+use insta::assert_snapshot;
+
+#[test]
+fn test_startup_screen_snapshot() {
+    let transcript = Transcript::from_inputs(
+        ShellOptions::default().with_cargo_path(),
+        vec![UserInput::command("cargo run -p coding-agent-cli")],
+    ).unwrap();
+
+    // Capture terminal output as text
+    let output = transcript.to_string();
+    insta::assert_snapshot!("startup_screen", output);
+}
+
+#[test]
+fn test_help_command_snapshot() {
+    let transcript = Transcript::from_inputs(
+        ShellOptions::default(),
+        vec![
+            UserInput::command("cargo run -p coding-agent-cli"),
+            UserInput::command("n"),      // New session
+            UserInput::command("/help"),
+            UserInput::command(""),       // Double-enter
+        ],
+    ).unwrap();
+
+    insta::assert_snapshot!("help_output", transcript.to_string());
+}
+
+#[test]
+fn test_context_bar_colors() {
+    // Test at 25%, 60%, 85% thresholds
+    // Verify green → yellow → red transitions
+}
+
+#[test]
+fn test_error_message_formatting() {
+    // Verify error messages are red, properly formatted
+}
+```
+
+**Snapshot files generated:**
+- `startup_screen.snap` - ASCII logo and session options
+- `help_output.snap` - All available commands
+- `context_bar_25.snap` - Green bar at low usage
+- `context_bar_70.snap` - Yellow bar at medium usage
+- `context_bar_90.snap` - Red bar at high usage
+- `tool_execution.snap` - "● Reading..." / "✓ Read 150 lines"
+- `error_permission.snap` - Permission denied error
+- `error_unknown_command.snap` - Unknown command suggestion
+
+---
+
+#### 13.4: Command Tests
+
+**Purpose:** Verify all slash commands work correctly.
+
+**Tests:**
+
+| Test | Command | What it verifies |
+|------|---------|------------------|
+| `test_cmd_help` | `/help` | Lists all commands with descriptions |
+| `test_cmd_clear` | `/clear` | Clears screen, resets context, saves session |
+| `test_cmd_exit` | `/exit` | Exits cleanly |
+| `test_cmd_quit_alias` | `/quit`, `/q` | Aliases work |
+| `test_cmd_config` | `/config` | Opens editor with config file |
+| `test_cmd_history` | `/history` | Lists past sessions |
+| `test_cmd_cost` | `/cost` | Shows token breakdown and costs |
+| `test_cmd_context` | `/context` | Shows loaded files and token usage |
+| `test_cmd_commit` | `/commit` | Analyzes changes, generates message |
+| `test_cmd_commit_pick` | `/commit --pick` | Shows file picker |
+| `test_cmd_diff` | `/diff` | Shows staged/unstaged changes |
+| `test_cmd_undo` | `/undo` | Reverts last change |
+| `test_cmd_spec` | `/spec auth` | Creates spec file, enters planning mode |
+| `test_cmd_document` | `/document topic` | Searches/creates Obsidian notes |
+| `test_cmd_model` | `/model sonnet` | Switches model |
+| `test_cmd_status` | `/status` | Shows active tasks/agents |
+| `test_cmd_unknown` | `/foobar` | Shows helpful error message |
+| `test_cmd_bare_slash` | `/` | Shows error, not sent as message |
+
+---
+
+#### 13.5: Full Workflow Integration Tests
+
+**Purpose:** Test complete user journeys from start to finish.
+
+**Test scenarios:**
+
+```rust
+#[tokio::test]
+async fn test_workflow_new_session_conversation() {
+    // 1. Start CLI
+    // 2. Select new session
+    // 3. Send message, get response
+    // 4. Send follow-up, verify context retained
+    // 5. Check /cost shows token usage
+    // 6. Exit with /exit
+    // 7. Verify session saved to .specstory/
+}
+
+#[tokio::test]
+async fn test_workflow_resume_session() {
+    // 1. Create a session with conversation
+    // 2. Exit
+    // 3. Restart CLI
+    // 4. Select resume
+    // 5. Verify previous context loaded
+    // 6. Continue conversation
+}
+
+#[tokio::test]
+async fn test_workflow_tool_execution() {
+    // 1. Ask Claude to read a file
+    // 2. Verify tool call displayed ("● Reading...")
+    // 3. Verify tool result displayed ("✓ Read 150 lines")
+    // 4. Verify Claude summarizes file contents
+}
+
+#[tokio::test]
+async fn test_workflow_self_healing() {
+    // 1. Run a command that fails (missing dependency)
+    // 2. Verify error categorized correctly
+    // 3. Verify fix-agent spawned
+    // 4. Verify fix applied
+    // 5. Verify regression test generated
+    // 6. Verify retry succeeds
+}
+
+#[tokio::test]
+async fn test_workflow_git_commit() {
+    // Setup: Create test repo with changes
+    // 1. Run /commit
+    // 2. Verify agent analyzes changes
+    // 3. Verify commit message generated
+    // 4. Verify preview shown
+    // 5. Confirm commit
+    // 6. Verify git log shows commit
+}
+
+#[tokio::test]
+async fn test_workflow_permission_prompt() {
+    // 1. Ask Claude to write to untrusted path
+    // 2. Verify permission prompt appears
+    // 3. Select "Always"
+    // 4. Verify added to config
+    // 5. Verify subsequent writes don't prompt
+}
+
+#[tokio::test]
+async fn test_workflow_long_wait_fun_facts() {
+    // 1. Mock slow API response (>10s)
+    // 2. Verify thinking messages rotate
+    // 3. Verify fun fact appears after threshold
+    // 4. Verify response eventually displays
+}
+```
+
+---
+
+#### 13.6: Performance Tests
+
+**Purpose:** Ensure CLI is responsive and doesn't regress.
+
+**Benchmarks:**
+
+| Metric | Target | Test |
+|--------|--------|------|
+| Startup time | <500ms | `bench_startup_to_prompt` |
+| Input latency | <16ms | `bench_keypress_to_display` |
+| Token counting | <10ms | `bench_token_count_10k` |
+| Context bar update | <5ms | `bench_context_bar_render` |
+| Session save | <100ms | `bench_session_save_large` |
+| Session load | <200ms | `bench_session_load_large` |
+
+**Implementation:**
+```rust
+use criterion::{criterion_group, criterion_main, Criterion};
+
+fn bench_startup(c: &mut Criterion) {
+    c.bench_function("startup_to_prompt", |b| {
+        b.iter(|| {
+            let mut session = CliTestSession::spawn().unwrap();
+            session.expect_startup_screen().unwrap();
+        });
+    });
+}
+
+fn bench_token_counting(c: &mut Criterion) {
+    let large_text = "word ".repeat(2000); // ~10k tokens
+    c.bench_function("token_count_10k", |b| {
+        b.iter(|| {
+            count_tokens(&large_text)
+        });
+    });
+}
+
+criterion_group!(benches, bench_startup, bench_token_counting);
+criterion_main!(benches);
+```
+
+---
+
+#### 13.7: CI/CD Integration
+
+**GitHub Actions workflow:**
+
+```yaml
+# .github/workflows/e2e.yml
+name: E2E Tests
+
+on: [push, pull_request]
+
+jobs:
+  e2e:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run E2E tests
+        run: cargo test --test e2e -- --test-threads=1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_TEST }}
+          # Or use mock server:
+          ANTHROPIC_BASE_URL: http://localhost:8080
+
+      - name: Run snapshot tests
+        run: cargo insta test --review
+
+      - name: Upload snapshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-snapshots-${{ matrix.os }}
+          path: tests/snapshots/*.snap.new
+
+  performance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-action@stable
+
+      - name: Run benchmarks
+        run: cargo bench -- --noplot
+
+      - name: Check for regressions
+        run: |
+          # Compare against baseline
+          cargo bench -- --baseline main --noplot
+```
+
+---
+
+**Tests Summary:**
+
+| Category | Test Count | Tools Used |
+|----------|------------|------------|
+| PTY Interactive | 8 | `expectrl` |
+| Mock API | 8 | `wiremock` |
+| Terminal Snapshots | 10+ | `insta`, `term-transcript` |
+| Command Tests | 18 | `assert_cmd` |
+| Workflow Integration | 7 | Combined |
+| Performance | 6 | `criterion` |
+| **Total** | **~57** | |
+
+**Edge cases to handle:**
+- CI environment has no TTY (use PTY emulation)
+- Mock server port conflicts (use dynamic ports)
+- Snapshot tests on different terminal widths (normalize output)
+- Flaky tests from timing issues (add retries, increase timeouts)
+- Platform-specific behavior (test matrix for macOS/Linux/Windows)
+
+**Stopping condition:**
+```
+✓ All PTY tests pass on all platforms
+✓ Mock server tests cover happy path and error cases
+✓ Snapshots reviewed and approved
+✓ All commands tested
+✓ Full workflows pass end-to-end
+✓ Performance within targets
+✓ CI pipeline green on all platforms
+✓ No flaky tests
 ```
 
 ---
@@ -1383,6 +2009,32 @@ A phase is complete when:
 - [x] Cost display: Separate (`/cost` command), not in context bar
 - [x] Startup: Welcome message with new/resume session options
 - [x] `/clear` behavior: Resets both display AND context
+
+---
+
+## Recent Updates
+
+### 2026-02-13: Claude API Integration & Terminal Fixes
+
+**Claude API Integration** (Critical)
+- [x] CLI now makes real API calls to Claude (was previously just echoing input)
+- [x] Added `ureq` and `dotenvy` dependencies for HTTP requests and env loading
+- [x] Loads `ANTHROPIC_API_KEY` from environment or `.env` file
+- [x] Multi-turn conversation memory (Claude remembers context)
+- [x] Shows "Thinking..." indicator during API calls
+
+**Terminal Raw Mode Fix** (Bug Fix)
+- [x] Fixed broken layout where ASCII logo and text drifted right
+- [x] Root cause: In raw mode, `\n` only moves cursor down, doesn't return to column 0
+- [x] Solution: Changed all newlines to `\r\n` in startup screen, REPL, and input handler
+- [x] Added `print_line()` and `print_newline()` helpers to REPL for consistent handling
+
+**Command Aliases** (UX Improvement)
+- [x] Added `/quit` as alias for `/exit` (common user expectation)
+- [x] Added `/q` as short alias for `/exit`
+- [x] Added error message for bare `/` input (was being treated as regular message)
+
+**Test Count:** 210 tests passing (206 unit + 3 integration + 1 doc test)
 
 ---
 

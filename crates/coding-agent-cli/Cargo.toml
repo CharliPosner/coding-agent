@@ -27,6 +27,10 @@ console = { workspace = true }
 syntect = { workspace = true }
 tiktoken-rs = { workspace = true }
 glob = { workspace = true }
+ureq = { version = "2.9", features = ["json"] }
+dotenvy = "0.15"
+schemars = "0.8"
+walkdir = "2.4"
 git2 = { workspace = true }
 
 [dev-dependencies]

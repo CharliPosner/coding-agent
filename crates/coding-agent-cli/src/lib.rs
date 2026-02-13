@@ -20,6 +20,9 @@ pub use permissions::{
     TrustedPathsError,
 };
 pub use tokens::{ModelPricing, TokenCount, TokenCounter, TokenCounterError};
-pub use tools::{ErrorCategory, ToolError, ToolExecutionResult, ToolExecutor, ToolExecutorConfig};
+pub use tools::{
+    create_tool_definitions, execute_tool, tool_definitions_to_api,
+    ErrorCategory, ToolError, ToolExecutionResult, ToolExecutor, ToolExecutorConfig,
+};
 pub use agents::{FixAgent, FixAgentConfig, FixAttempt, FixResult, FixStatus};
 pub use ui::ContextBar;

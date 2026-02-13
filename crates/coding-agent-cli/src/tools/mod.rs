@@ -10,6 +10,7 @@
 //! - Regression test generation to prevent fix reversions
 
 mod auto_fix;
+mod definitions;
 mod diagnostics;
 mod executor;
 mod regression_tests;
@@ -26,3 +27,4 @@ pub use regression_tests::{
     generate_regression_test, generate_test_from_diagnostic, write_regression_test,
     RegressionTest, RegressionTestConfig,
 };
+pub use definitions::{create_tool_definitions, execute_tool, tool_definitions_to_api};
