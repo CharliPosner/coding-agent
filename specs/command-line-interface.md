@@ -1211,8 +1211,8 @@ src/
 - [x] `/document <topic>` - Obsidian integration
 - [x] Vault search functionality
 - [x] Note creation and update
-- [ ] `/model [name]` - switch AI model
-- [ ] Model availability validation
+- [x] `/model [name]` - switch AI model
+- [x] Model availability validation
 
 **Files to create:**
 ```

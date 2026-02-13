@@ -13,6 +13,7 @@ mod document;
 mod exit;
 mod help;
 mod history;
+mod model;
 mod spec;
 // mod undo;  // TODO: Implement in Phase 9
 
@@ -91,6 +92,7 @@ impl CommandRegistry {
         registry.register(&exit::QuitCommand);
         registry.register(&exit::QCommand);
         registry.register(&history::HistoryCommand);
+        registry.register(&model::ModelCommand);
         registry.register(&spec::SpecCommand);
         // registry.register(&undo::UndoCommand);  // TODO: Implement in Phase 9
         registry
@@ -213,6 +215,9 @@ mod tests {
 
         // History command exists
         assert!(registry.get("history").is_some());
+
+        // Model command exists
+        assert!(registry.get("model").is_some());
 
         // Spec command exists
         assert!(registry.get("spec").is_some());
