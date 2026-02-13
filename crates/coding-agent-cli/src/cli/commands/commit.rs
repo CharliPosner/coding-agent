@@ -5,7 +5,8 @@
 //! what was changed.
 
 use super::{Command, CommandContext, CommandResult};
-use crate::integrations::git::{FileStatusKind, GitError, GitRepo, RepoStatus};
+use crate::integrations::git::{FileStatus, FileStatusKind, GitError, GitRepo, RepoStatus};
+use crate::ui::{FileEntry, FilePicker, FilePickerResult};
 use git2::{Repository, Signature};
 
 pub struct CommitCommand;
@@ -73,10 +74,7 @@ impl Command for CommitCommand {
 
         // Execute the commit based on options
         if options.pick {
-            // Interactive mode will be implemented in next deliverable
-            return CommandResult::Error(
-                "Interactive file picker (--pick) not yet implemented.".to_string(),
-            );
+            return execute_pick_commit(&repo, &status, options.message.as_deref());
         }
 
         // Auto-commit mode: stage and commit changes
@@ -280,6 +278,188 @@ fn execute_auto_commit(
             output.push_str("\nFiles committed:\n");
             for file in files_to_stage {
                 output.push_str(&format!("  {} {}\n", file.status.indicator(), file.path.display()));
+            }
+
+            CommandResult::Output(output)
+        }
+        Err(e) => CommandResult::Error(format!("Failed to create commit: {}", e)),
+    }
+}
+
+/// Execute an interactive pick commit
+fn execute_pick_commit(
+    git_repo: &GitRepo,
+    status: &RepoStatus,
+    custom_message: Option<&str>,
+) -> CommandResult {
+    // Build list of file entries for the picker
+    let entries: Vec<FileEntry> = status
+        .files
+        .iter()
+        .filter(|f| {
+            matches!(
+                f.status,
+                FileStatusKind::Modified
+                    | FileStatusKind::Untracked
+                    | FileStatusKind::Deleted
+                    | FileStatusKind::Staged
+                    | FileStatusKind::StagedWithChanges
+                    | FileStatusKind::Added
+            )
+        })
+        .map(|f| {
+            // Pre-select already staged files
+            let selected = matches!(
+                f.status,
+                FileStatusKind::Staged | FileStatusKind::StagedWithChanges | FileStatusKind::Added
+            );
+            FileEntry {
+                path: f.path.to_string_lossy().to_string(),
+                status: f.status.indicator().to_string(),
+                selected,
+            }
+        })
+        .collect();
+
+    if entries.is_empty() {
+        return CommandResult::Output("No changes to commit.".to_string());
+    }
+
+    // Run the interactive picker
+    let mut picker = FilePicker::new(entries);
+    let selected_paths = match picker.run() {
+        Ok(FilePickerResult::Selected(paths)) => paths,
+        Ok(FilePickerResult::Cancelled) => {
+            return CommandResult::Output("Commit cancelled.".to_string());
+        }
+        Err(e) => {
+            return CommandResult::Error(format!("File picker error: {}", e));
+        }
+    };
+
+    if selected_paths.is_empty() {
+        return CommandResult::Output("No files selected. Commit cancelled.".to_string());
+    }
+
+    // Now commit the selected files
+    let repo_root = match git_repo.root() {
+        Some(r) => r,
+        None => return CommandResult::Error("Could not determine repository root.".to_string()),
+    };
+
+    let repo = match Repository::open(repo_root) {
+        Ok(r) => r,
+        Err(e) => return CommandResult::Error(format!("Failed to open repository: {}", e)),
+    };
+
+    // Get the selected files from status
+    let files_to_commit: Vec<&FileStatus> = status
+        .files
+        .iter()
+        .filter(|f| selected_paths.contains(&f.path.to_string_lossy().to_string()))
+        .collect();
+
+    // Stage the selected files
+    let mut index = match repo.index() {
+        Ok(i) => i,
+        Err(e) => return CommandResult::Error(format!("Failed to get index: {}", e)),
+    };
+
+    for file in &files_to_commit {
+        let path = &file.path;
+        match file.status {
+            FileStatusKind::Deleted => {
+                if let Err(e) = index.remove_path(path) {
+                    return CommandResult::Error(format!(
+                        "Failed to stage deletion of {:?}: {}",
+                        path, e
+                    ));
+                }
+            }
+            FileStatusKind::Untracked
+            | FileStatusKind::Modified
+            | FileStatusKind::StagedWithChanges => {
+                if let Err(e) = index.add_path(path) {
+                    return CommandResult::Error(format!("Failed to stage {:?}: {}", path, e));
+                }
+            }
+            // Already staged files don't need to be re-added
+            FileStatusKind::Staged | FileStatusKind::Added => {}
+            _ => {}
+        }
+    }
+
+    if let Err(e) = index.write() {
+        return CommandResult::Error(format!("Failed to write index: {}", e));
+    }
+
+    // Generate commit message
+    let message = match custom_message {
+        Some(msg) => msg.to_string(),
+        None => generate_commit_message(&files_to_commit, status),
+    };
+
+    // Create the commit
+    let tree_id = match index.write_tree() {
+        Ok(id) => id,
+        Err(e) => return CommandResult::Error(format!("Failed to write tree: {}", e)),
+    };
+
+    let tree = match repo.find_tree(tree_id) {
+        Ok(t) => t,
+        Err(e) => return CommandResult::Error(format!("Failed to find tree: {}", e)),
+    };
+
+    let signature = match repo.signature() {
+        Ok(s) => s,
+        Err(_) => match Signature::now("coding-agent", "coding-agent@local") {
+            Ok(s) => s,
+            Err(e) => {
+                return CommandResult::Error(format!(
+                    "Failed to create signature: {}. Configure git with 'git config user.name' and 'git config user.email'.",
+                    e
+                ))
+            }
+        },
+    };
+
+    let parent = match repo.head() {
+        Ok(head) => match head.peel_to_commit() {
+            Ok(commit) => Some(commit),
+            Err(_) => None,
+        },
+        Err(_) => None,
+    };
+
+    let parents: Vec<_> = parent.iter().collect();
+
+    match repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        &message,
+        &tree,
+        &parents,
+    ) {
+        Ok(oid) => {
+            let short_id = &oid.to_string()[..7];
+            let file_count = files_to_commit.len();
+            let file_word = if file_count == 1 { "file" } else { "files" };
+
+            let mut output = String::new();
+            output.push_str(&format!(
+                "✓ Committed {} {} [{}]\n\n",
+                file_count, file_word, short_id
+            ));
+            output.push_str(&format!("{}\n", message));
+
+            output.push_str("\nFiles committed:\n");
+            for file in files_to_commit {
+                output.push_str(&format!(
+                    "  {} {}\n",
+                    file.status.indicator(),
+                    file.path.display()
+                ));
             }
 
             CommandResult::Output(output)
@@ -872,5 +1052,133 @@ mod tests {
         let message = generate_commit_message(&file_refs, &status);
         // Should recognize we have both source and test files
         assert!(message.contains("Update") || message.contains("Modified"));
+    }
+
+    #[test]
+    fn test_pick_mode_file_entry_construction() {
+        // Test that file entries are correctly constructed from git status
+        let status = RepoStatus {
+            branch: Some("main".to_string()),
+            detached: false,
+            has_conflicts: false,
+            files: vec![
+                FileStatus {
+                    path: PathBuf::from("src/modified.rs"),
+                    status: FileStatusKind::Modified,
+                },
+                FileStatus {
+                    path: PathBuf::from("src/staged.rs"),
+                    status: FileStatusKind::Staged,
+                },
+                FileStatus {
+                    path: PathBuf::from("src/new.rs"),
+                    status: FileStatusKind::Untracked,
+                },
+                FileStatus {
+                    path: PathBuf::from("src/added.rs"),
+                    status: FileStatusKind::Added,
+                },
+            ],
+        };
+
+        // Build entries the same way execute_pick_commit does
+        let entries: Vec<FileEntry> = status
+            .files
+            .iter()
+            .filter(|f| {
+                matches!(
+                    f.status,
+                    FileStatusKind::Modified
+                        | FileStatusKind::Untracked
+                        | FileStatusKind::Deleted
+                        | FileStatusKind::Staged
+                        | FileStatusKind::StagedWithChanges
+                        | FileStatusKind::Added
+                )
+            })
+            .map(|f| {
+                let selected = matches!(
+                    f.status,
+                    FileStatusKind::Staged | FileStatusKind::StagedWithChanges | FileStatusKind::Added
+                );
+                FileEntry {
+                    path: f.path.to_string_lossy().to_string(),
+                    status: f.status.indicator().to_string(),
+                    selected,
+                }
+            })
+            .collect();
+
+        assert_eq!(entries.len(), 4);
+
+        // Modified file should not be pre-selected
+        assert!(!entries[0].selected);
+        assert_eq!(entries[0].path, "src/modified.rs");
+
+        // Staged file should be pre-selected
+        assert!(entries[1].selected);
+        assert_eq!(entries[1].path, "src/staged.rs");
+
+        // Untracked file should not be pre-selected
+        assert!(!entries[2].selected);
+        assert_eq!(entries[2].path, "src/new.rs");
+
+        // Added file should be pre-selected
+        assert!(entries[3].selected);
+        assert_eq!(entries[3].path, "src/added.rs");
+    }
+
+    #[test]
+    fn test_pick_mode_empty_status() {
+        // When there are no changes, execute_pick_commit should return early
+        // This test uses GitRepo::open() with explicit path instead of relying on cwd
+
+        let (temp_dir, repo) = init_test_repo();
+
+        // Create initial commit
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, "content").expect("Failed to write file");
+
+        let mut index = repo.index().expect("Failed to get index");
+        index.add_path(Path::new("test.txt")).expect("Failed to add file");
+        index.write().expect("Failed to write index");
+
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+        let sig = repo.signature().expect("Failed to get signature");
+
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+            .expect("Failed to commit");
+
+        // Open repo using explicit path (not cwd)
+        let git_repo = GitRepo::open(temp_dir.path()).expect("Failed to open repo");
+        let status = git_repo.status().expect("Failed to get status");
+
+        // Verify status is clean
+        assert!(status.is_clean(), "Repo should be clean after commit");
+
+        // With a clean repo, execute_pick_commit should return "No changes"
+        let result = execute_pick_commit(&git_repo, &status, None);
+
+        match result {
+            CommandResult::Output(output) => {
+                assert!(
+                    output.contains("No changes"),
+                    "Expected 'No changes' message, got: {}",
+                    output
+                );
+            }
+            other => panic!("Expected Output result for clean repo, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_commit_args_pick_with_message() {
+        // Test parsing --pick with a custom message
+        let result = parse_commit_args(&["--pick", "-m", "custom message"]);
+        assert!(result.is_ok());
+        let options = result.unwrap();
+        assert!(options.pick);
+        assert_eq!(options.message, Some("custom message".to_string()));
     }
 }

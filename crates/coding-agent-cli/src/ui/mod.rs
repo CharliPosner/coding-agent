@@ -4,6 +4,7 @@
 
 pub mod components;
 pub mod context_bar;
+pub mod file_picker;
 pub mod output;
 pub mod progress;
 pub mod spinner;
@@ -13,6 +14,7 @@ pub mod tool_spinner;
 
 pub use components::MessageBox;
 pub use context_bar::ContextBar;
+pub use file_picker::{FileEntry, FilePicker, FilePickerResult};
 pub use output::StyledOutput;
 pub use progress::ProgressBar;
 pub use spinner::Spinner;
