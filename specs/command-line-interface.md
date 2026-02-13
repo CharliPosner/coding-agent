@@ -2119,10 +2119,10 @@ match result.result {
    - [x] Clear status bar when all agents complete
 
 2. **LongWaitDetector Integration**
-   - [ ] Replace manual `elapsed.as_secs()` check with `LongWaitDetector`
-   - [ ] Call `detector.start()` before API call
-   - [ ] Call `detector.check()` periodically
-   - [ ] Trigger fun fact on first threshold crossing
+   - [x] Replace manual `elapsed.as_secs()` check with `LongWaitDetector`
+   - [x] Call `detector.start()` before API call
+   - [x] Call `detector.check()` periodically
+   - [x] Trigger fun fact on first threshold crossing
 
 3. **Enhanced Tool Result Formatting**
    - [ ] Use `ToolResultFormatter::format_result()` consistently

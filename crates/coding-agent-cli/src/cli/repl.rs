@@ -14,7 +14,7 @@ use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::tools::{
     create_tool_definitions, tool_definitions_to_api, ToolExecutor, ToolExecutorConfig,
 };
-use crate::ui::{ContextBar, FunFactClient, StatusBar, Theme, ThinkingMessages, ToolExecutionSpinner, ToolResultFormatter};
+use crate::ui::{ContextBar, FunFactClient, LongWaitDetector, StatusBar, Theme, ThinkingMessages, ToolExecutionSpinner, ToolResultFormatter};
 use coding_agent_core::{
     ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition,
 };
@@ -22,7 +22,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// REPL configuration
 pub struct ReplConfig {
@@ -398,8 +398,11 @@ impl Repl {
                 None
             };
 
-            // Record start time
-            let start_time = Instant::now();
+            // Start long wait detector
+            let mut detector = LongWaitDetector::with_threshold(
+                Duration::from_secs(self.fun_fact_delay as u64)
+            );
+            detector.start();
 
             // Call Claude API
             let response = match self.call_claude(&self.conversation) {
@@ -413,8 +416,7 @@ impl Repl {
             };
 
             // Check if call took longer than threshold
-            let elapsed = start_time.elapsed();
-            let show_fun_fact = elapsed.as_secs() >= self.fun_fact_delay as u64;
+            let show_fun_fact = detector.has_exceeded_threshold();
 
             // If call took long enough and we have a fun fact, display it
             if show_fun_fact && fun_fact.is_some() {
