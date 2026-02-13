@@ -154,6 +154,7 @@ impl Agent {
             max_tokens: 1024,
             messages: conversation.to_vec(),
             tools,
+            system: None,
         };
 
         if self.verbose {

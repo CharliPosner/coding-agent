@@ -13,8 +13,9 @@ mod exit;
 mod help;
 mod history;
 mod spec;
-mod undo;
+// mod undo;  // TODO: Implement in Phase 9
 
+use crate::cli::Mode;
 use crate::tokens::CostTracker;
 use std::collections::HashMap;
 
@@ -31,6 +32,8 @@ pub enum CommandResult {
     Output(String),
     /// Command failed with an error
     Error(String),
+    /// Command requests a mode change with optional output
+    ModeChange { mode: Mode, output: Option<String> },
 }
 
 /// Trait for implementing commands
@@ -87,7 +90,7 @@ impl CommandRegistry {
         registry.register(&exit::QCommand);
         registry.register(&history::HistoryCommand);
         registry.register(&spec::SpecCommand);
-        registry.register(&undo::UndoCommand);
+        // registry.register(&undo::UndoCommand);  // TODO: Implement in Phase 9
         registry
     }
 
@@ -209,8 +212,11 @@ mod tests {
         // History command exists
         assert!(registry.get("history").is_some());
 
-        // Undo command exists
-        assert!(registry.get("undo").is_some());
+        // Spec command exists
+        assert!(registry.get("spec").is_some());
+
+        // TODO: Undo command exists (implement in Phase 9)
+        // assert!(registry.get("undo").is_some());
 
         // Unknown command doesn't exist
         assert!(registry.get("unknown").is_none());

@@ -4,6 +4,7 @@
 
 use super::commands::{parse_command, CommandContext, CommandRegistry, CommandResult};
 use super::input::{InputHandler, InputResult};
+use super::modes::Mode;
 use super::terminal::Terminal;
 use crate::config::Config;
 use crate::integrations::{Session, SessionManager};
@@ -79,6 +80,8 @@ pub struct Repl {
     tool_result_formatter: ToolResultFormatter,
     /// Permission checker for file operations
     permission_checker: Option<PermissionChecker>,
+    /// Current mode (normal or planning)
+    mode: Mode,
 }
 
 impl Repl {
@@ -145,6 +148,7 @@ impl Repl {
             tools_api,
             tool_result_formatter,
             permission_checker,
+            mode: Mode::default(),
         }
     }
 
@@ -228,11 +232,22 @@ impl Repl {
         }
     }
 
+    /// Get the current mode
+    pub fn mode(&self) -> &Mode {
+        &self.mode
+    }
+
+    /// Set the current mode
+    pub fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+    }
+
     /// Reset context tracking (for /clear)
     pub fn reset_context(&mut self) {
         self.context_bar.reset();
         self.cost_tracker.reset();
         self.conversation.clear();
+        self.mode = Mode::default(); // Reset to normal mode
     }
 
     /// Call the Claude API with the current conversation
@@ -247,6 +262,7 @@ impl Repl {
             max_tokens: 4096,
             messages: messages.to_vec(),
             tools: self.tools_api.clone(),
+            system: Some(self.mode.system_prompt()),
         };
 
         let response = ureq::post("https://api.anthropic.com/v1/messages")
@@ -489,7 +505,12 @@ impl Repl {
         self.print_welcome();
 
         loop {
-            print!("> ");
+            // Show mode indicator in prompt if in planning mode
+            if let Some(indicator) = self.mode.indicator() {
+                print!("{} > ", indicator);
+            } else {
+                print!("> ");
+            }
             std::io::stdout().flush().map_err(|e| e.to_string())?;
 
             match self.input_handler.read_input().await {
@@ -536,6 +557,25 @@ impl Repl {
                         ReplAction::Error(error) => {
                             self.print_newline();
                             self.print_line(&format!("Error: {}", error));
+                            self.print_newline();
+                        }
+                        ReplAction::ModeChange { mode, output } => {
+                            // Set the new mode
+                            self.mode = mode.clone();
+
+                            // Show mode indicator if available
+                            if let Some(indicator) = mode.indicator() {
+                                self.print_newline();
+                                self.print_line(&indicator);
+                            }
+
+                            // Display output if provided
+                            if let Some(output) = output {
+                                self.print_newline();
+                                for line in output.lines() {
+                                    self.print_line(line);
+                                }
+                            }
                             self.print_newline();
                         }
                         ReplAction::Message(input) => {
@@ -647,6 +687,9 @@ impl Repl {
                 CommandResult::Cleared => ReplAction::Clear,
                 CommandResult::Output(output) => ReplAction::Output(output),
                 CommandResult::Error(error) => ReplAction::Error(error),
+                CommandResult::ModeChange { mode, output } => {
+                    ReplAction::ModeChange { mode, output }
+                }
             },
             None => ReplAction::Error(format!(
                 "Unknown command: /{}. Try /help for available commands.",
@@ -675,6 +718,8 @@ enum ReplAction {
     Error(String),
     /// A regular message (not a command)
     Message(String),
+    /// Change mode with optional output
+    ModeChange { mode: Mode, output: Option<String> },
 }
 
 #[cfg(test)]

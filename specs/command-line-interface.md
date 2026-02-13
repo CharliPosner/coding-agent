@@ -1206,7 +1206,7 @@ src/
 
 **Deliverables:**
 - [x] `/spec <name>` - create spec file, enter planning mode
-- [ ] Planning mode (different prompt behavior)
+- [x] Planning mode (different prompt behavior)
 - [x] Spec file template generation
 - [ ] `/document <topic>` - Obsidian integration
 - [ ] Vault search functionality

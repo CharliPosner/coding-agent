@@ -1,6 +1,7 @@
 //! The /spec command - create spec files and enter planning mode
 
 use super::{Command, CommandContext, CommandResult};
+use crate::cli::Mode;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -47,7 +48,7 @@ impl Command for SpecCommand {
             // Load existing spec
             match fs::read_to_string(&spec_path) {
                 Ok(content) => {
-                    CommandResult::Output(format!(
+                    let output = format!(
                         "Opened existing spec: {}\n\n\
                         Entering planning mode...\n\n\
                         Current content:\n\
@@ -55,7 +56,11 @@ impl Command for SpecCommand {
                         Let's continue working on this specification. What would you like to discuss or add?",
                         spec_path.display(),
                         truncate_content(&content, 500)
-                    ))
+                    );
+                    CommandResult::ModeChange {
+                        mode: Mode::planning(spec_path.display().to_string()),
+                        output: Some(output),
+                    }
                 }
                 Err(e) => CommandResult::Error(format!(
                     "Failed to read spec file: {}",
@@ -79,7 +84,7 @@ impl Command for SpecCommand {
             // Write template to file
             match fs::write(&spec_path, &template) {
                 Ok(_) => {
-                    CommandResult::Output(format!(
+                    let output = format!(
                         "Created new spec: {}\n\n\
                         Entering planning mode...\n\n\
                         I've created a template for your specification. Let's design the {} system together.\n\n\
@@ -90,7 +95,11 @@ impl Command for SpecCommand {
                         Or feel free to ask me questions about the best approach!",
                         spec_path.display(),
                         spec_name
-                    ))
+                    );
+                    CommandResult::ModeChange {
+                        mode: Mode::planning(spec_path.display().to_string()),
+                        output: Some(output),
+                    }
                 }
                 Err(e) => CommandResult::Error(format!(
                     "Failed to create spec file: {}",
@@ -319,14 +328,17 @@ mod tests {
         let spec_path = Path::new("specs/test-spec.md");
         assert!(spec_path.exists(), "Spec file should be created");
 
-        // Check that result indicates success
+        // Check that result indicates success and mode change
         match result {
-            CommandResult::Output(msg) => {
+            CommandResult::ModeChange { mode, output } => {
+                assert!(mode.is_planning());
+                assert!(output.is_some());
+                let msg = output.unwrap();
                 assert!(msg.contains("Created new spec") || msg.contains("created a template"));
                 assert!(msg.contains("planning mode"));
             }
-            CommandResult::Error(e) => panic!("Expected Output result, got Error: {}", e),
-            _ => panic!("Expected Output result, got: {:?}", result),
+            CommandResult::Error(e) => panic!("Expected ModeChange result, got Error: {}", e),
+            _ => panic!("Expected ModeChange result, got: {:?}", result),
         }
 
         teardown_test_env(original_dir);
@@ -359,11 +371,14 @@ mod tests {
         let result = cmd.execute(&["existing-spec"], &mut ctx);
 
         match result {
-            CommandResult::Output(msg) => {
+            CommandResult::ModeChange { mode, output } => {
+                assert!(mode.is_planning());
+                assert!(output.is_some());
+                let msg = output.unwrap();
                 assert!(msg.contains("Opened existing spec"));
                 assert!(msg.contains("planning mode"));
             }
-            _ => panic!("Expected Output result when opening existing spec"),
+            _ => panic!("Expected ModeChange result when opening existing spec"),
         }
 
         teardown_test_env(original_dir);

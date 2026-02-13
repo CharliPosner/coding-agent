@@ -5,6 +5,7 @@
 
 pub mod commands;
 mod input;
+pub mod modes;
 mod repl;
 mod startup;
 mod terminal;
@@ -12,6 +13,7 @@ mod terminal;
 use commands::Command;
 
 pub use input::InputHandler;
+pub use modes::Mode;
 pub use repl::{Repl, ReplConfig};
 pub use startup::{StartupOption, StartupScreen};
 pub use terminal::Terminal;
