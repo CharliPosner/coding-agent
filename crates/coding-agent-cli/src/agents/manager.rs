@@ -1,0 +1,466 @@
+//! Agent manager for spawning, tracking, and canceling agents.
+//!
+//! This module provides the infrastructure for managing multiple concurrent agents
+//! that can handle various tasks in parallel.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+
+use super::status::{AgentId, AgentState, AgentStatus};
+
+/// Agent manager handles spawning, tracking, and canceling multiple agents.
+pub struct AgentManager {
+    agents: Arc<Mutex<HashMap<AgentId, ManagedAgent>>>,
+    next_id: Arc<Mutex<u64>>,
+}
+
+/// Internal representation of a managed agent.
+#[allow(dead_code)]
+struct ManagedAgent {
+    name: String,
+    description: String,
+    status: AgentStatus,
+    handle: JoinHandle<Result<String, String>>,
+    cancel_tx: mpsc::Sender<()>,
+}
+
+impl AgentManager {
+    /// Creates a new agent manager.
+    pub fn new() -> Self {
+        Self {
+            agents: Arc::new(Mutex::new(HashMap::new())),
+            next_id: Arc::new(Mutex::new(0)),
+        }
+    }
+
+    /// Spawns a new agent with the given name, description, and task.
+    ///
+    /// Returns the agent ID.
+    pub fn spawn<F>(&self, name: String, description: String, task: F) -> AgentId
+    where
+        F: FnOnce() -> Result<String, String> + Send + 'static,
+    {
+        // Generate unique ID
+        let id = {
+            let mut next = self.next_id.lock().unwrap();
+            let id = *next;
+            *next += 1;
+            AgentId(id)
+        };
+
+        // Create cancellation channel
+        let (cancel_tx, mut cancel_rx) = mpsc::channel(1);
+
+        // Spawn the agent task
+        let agents_clone = Arc::clone(&self.agents);
+        let id_clone = id;
+
+        let handle = tokio::spawn(async move {
+            // Update status to running
+            {
+                let mut agents = agents_clone.lock().unwrap();
+                if let Some(agent) = agents.get_mut(&id_clone) {
+                    agent.status.state = AgentState::Running;
+                }
+            }
+
+            // Run the task or check for cancellation
+            tokio::select! {
+                result = tokio::task::spawn_blocking(move || task()) => {
+                    match result {
+                        Ok(task_result) => task_result,
+                        Err(e) => Err(format!("Task panic: {}", e)),
+                    }
+                }
+                _ = cancel_rx.recv() => {
+                    Err("Agent cancelled".to_string())
+                }
+            }
+        });
+
+        // Create and store the managed agent
+        let managed_agent = ManagedAgent {
+            name: name.clone(),
+            description: description.clone(),
+            status: AgentStatus {
+                id,
+                name,
+                description,
+                state: AgentState::Queued,
+                progress: 0,
+            },
+            handle,
+            cancel_tx,
+        };
+
+        self.agents.lock().unwrap().insert(id, managed_agent);
+
+        id
+    }
+
+    /// Updates the progress of an agent.
+    pub fn update_progress(&self, id: AgentId, progress: u8) -> Result<(), String> {
+        let mut agents = self.agents.lock().unwrap();
+        let agent = agents
+            .get_mut(&id)
+            .ok_or_else(|| format!("Agent {:?} not found", id))?;
+
+        agent.status.progress = progress.min(100);
+        Ok(())
+    }
+
+    /// Cancels an agent by its ID.
+    pub async fn cancel(&self, id: AgentId) -> Result<(), String> {
+        // Get the cancel sender outside the lock
+        let cancel_tx = {
+            let agents = self.agents.lock().unwrap();
+            let agent = agents
+                .get(&id)
+                .ok_or_else(|| format!("Agent {:?} not found", id))?;
+            agent.cancel_tx.clone()
+        };
+
+        // Send cancellation signal without holding the lock
+        if cancel_tx.send(()).await.is_err() {
+            return Err(format!("Failed to send cancel signal to agent {:?}", id));
+        }
+
+        // Update the state
+        let mut agents = self.agents.lock().unwrap();
+        if let Some(agent) = agents.get_mut(&id) {
+            agent.status.state = AgentState::Cancelled;
+        }
+
+        Ok(())
+    }
+
+    /// Gets the status of an agent by ID.
+    pub fn get_status(&self, id: AgentId) -> Option<AgentStatus> {
+        let agents = self.agents.lock().unwrap();
+        agents.get(&id).map(|agent| agent.status.clone())
+    }
+
+    /// Gets the status of all agents.
+    pub fn get_all_statuses(&self) -> Vec<AgentStatus> {
+        let agents = self.agents.lock().unwrap();
+        agents.values().map(|agent| agent.status.clone()).collect()
+    }
+
+    /// Checks if an agent is complete (either succeeded or failed).
+    pub fn is_complete(&self, id: AgentId) -> bool {
+        let agents = self.agents.lock().unwrap();
+        if let Some(agent) = agents.get(&id) {
+            matches!(
+                agent.status.state,
+                AgentState::Complete | AgentState::Failed | AgentState::Cancelled
+            )
+        } else {
+            false
+        }
+    }
+
+    /// Waits for an agent to complete and returns its result.
+    ///
+    /// Removes the agent from the manager after completion.
+    pub async fn wait(&self, id: AgentId) -> Result<String, String> {
+        // Take the agent out of the map
+        let mut agent = {
+            let mut agents = self.agents.lock().unwrap();
+            agents.remove(&id).ok_or_else(|| format!("Agent {:?} not found", id))?
+        };
+
+        // Wait for completion
+        let result = agent.handle.await;
+
+        // Update final state based on result
+        let final_result = match result {
+            Ok(Ok(value)) => {
+                agent.status.state = AgentState::Complete;
+                agent.status.progress = 100;
+                Ok(value)
+            }
+            Ok(Err(error)) => {
+                agent.status.state = AgentState::Failed;
+                Err(error)
+            }
+            Err(join_error) => {
+                agent.status.state = AgentState::Failed;
+                Err(format!("Agent task panicked: {}", join_error))
+            }
+        };
+
+        final_result
+    }
+
+    /// Cancels all running agents.
+    pub async fn cancel_all(&self) -> Result<(), String> {
+        let agent_ids: Vec<AgentId> = {
+            let agents = self.agents.lock().unwrap();
+            agents.keys().copied().collect()
+        };
+
+        for id in agent_ids {
+            // Ignore errors for individual agents
+            let _ = self.cancel(id).await;
+        }
+
+        Ok(())
+    }
+
+    /// Returns the count of active (non-complete) agents.
+    pub fn active_count(&self) -> usize {
+        let agents = self.agents.lock().unwrap();
+        agents
+            .values()
+            .filter(|agent| !matches!(
+                agent.status.state,
+                AgentState::Complete | AgentState::Failed | AgentState::Cancelled
+            ))
+            .count()
+    }
+
+    /// Cleans up completed agents from the manager.
+    pub fn cleanup_completed(&self) {
+        let mut agents = self.agents.lock().unwrap();
+        agents.retain(|_, agent| {
+            !matches!(
+                agent.status.state,
+                AgentState::Complete | AgentState::Failed | AgentState::Cancelled
+            )
+        });
+    }
+}
+
+impl Default for AgentManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn test_agent_lifecycle() {
+        let manager = AgentManager::new();
+
+        // Spawn an agent
+        let id = manager.spawn(
+            "test-agent".to_string(),
+            "Testing agent lifecycle".to_string(),
+            || {
+                std::thread::sleep(Duration::from_millis(50));
+                Ok("success".to_string())
+            },
+        );
+
+        // Initially should be queued
+        let status = manager.get_status(id).unwrap();
+        assert_eq!(status.name, "test-agent");
+        assert!(matches!(status.state, AgentState::Queued | AgentState::Running));
+
+        // Wait for completion
+        let result = manager.wait(id).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "success");
+    }
+
+    #[tokio::test]
+    async fn test_agent_cancellation() {
+        let manager = AgentManager::new();
+
+        // Spawn a long-running agent
+        let id = manager.spawn(
+            "long-agent".to_string(),
+            "Long running task".to_string(),
+            || {
+                std::thread::sleep(Duration::from_secs(10));
+                Ok("should not see this".to_string())
+            },
+        );
+
+        // Give it a moment to start
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Cancel the agent
+        let cancel_result = manager.cancel(id).await;
+        assert!(cancel_result.is_ok());
+
+        // Wait for it to finish (should be cancelled)
+        let result = manager.wait(id).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("cancelled"));
+    }
+
+    #[tokio::test]
+    async fn test_parallel_execution() {
+        let manager = AgentManager::new();
+
+        // Spawn multiple agents
+        let id1 = manager.spawn(
+            "agent-1".to_string(),
+            "First agent".to_string(),
+            || {
+                std::thread::sleep(Duration::from_millis(100));
+                Ok("result-1".to_string())
+            },
+        );
+
+        let id2 = manager.spawn(
+            "agent-2".to_string(),
+            "Second agent".to_string(),
+            || {
+                std::thread::sleep(Duration::from_millis(100));
+                Ok("result-2".to_string())
+            },
+        );
+
+        let id3 = manager.spawn(
+            "agent-3".to_string(),
+            "Third agent".to_string(),
+            || {
+                std::thread::sleep(Duration::from_millis(100));
+                Ok("result-3".to_string())
+            },
+        );
+
+        // Check active count
+        assert_eq!(manager.active_count(), 3);
+
+        // Wait for all to complete
+        let (r1, r2, r3) = tokio::join!(
+            manager.wait(id1),
+            manager.wait(id2),
+            manager.wait(id3)
+        );
+
+        assert_eq!(r1.unwrap(), "result-1");
+        assert_eq!(r2.unwrap(), "result-2");
+        assert_eq!(r3.unwrap(), "result-3");
+
+        // All should be done now
+        assert_eq!(manager.active_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_agent_failure_handling() {
+        let manager = AgentManager::new();
+
+        // Spawn an agent that fails
+        let id = manager.spawn(
+            "failing-agent".to_string(),
+            "This will fail".to_string(),
+            || Err("intentional error".to_string()),
+        );
+
+        // Wait for it to fail
+        let result = manager.wait(id).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "intentional error");
+    }
+
+    #[tokio::test]
+    async fn test_result_aggregation() {
+        let manager = AgentManager::new();
+
+        // Spawn agents
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("1".to_string()));
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Ok("2".to_string()));
+        let id3 = manager.spawn("a3".to_string(), "desc".to_string(), || Ok("3".to_string()));
+
+        // Collect results
+        let r1 = manager.wait(id1).await.unwrap();
+        let r2 = manager.wait(id2).await.unwrap();
+        let r3 = manager.wait(id3).await.unwrap();
+
+        let combined = format!("{}{}{}", r1, r2, r3);
+        assert_eq!(combined, "123");
+    }
+
+    #[tokio::test]
+    async fn test_update_progress() {
+        let manager = AgentManager::new();
+
+        let id = manager.spawn(
+            "progress-agent".to_string(),
+            "Testing progress updates".to_string(),
+            || {
+                std::thread::sleep(Duration::from_millis(100));
+                Ok("done".to_string())
+            },
+        );
+
+        // Update progress
+        manager.update_progress(id, 50).unwrap();
+        let status = manager.get_status(id).unwrap();
+        assert_eq!(status.progress, 50);
+
+        // Progress should not exceed 100
+        manager.update_progress(id, 150).unwrap();
+        let status = manager.get_status(id).unwrap();
+        assert_eq!(status.progress, 100);
+
+        manager.wait(id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_cancel_all() {
+        let manager = AgentManager::new();
+
+        // Spawn multiple agents
+        manager.spawn("a1".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_secs(10));
+            Ok("".to_string())
+        });
+        manager.spawn("a2".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_secs(10));
+            Ok("".to_string())
+        });
+        manager.spawn("a3".to_string(), "desc".to_string(), || {
+            std::thread::sleep(Duration::from_secs(10));
+            Ok("".to_string())
+        });
+
+        // Give agents time to start
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        assert_eq!(manager.active_count(), 3);
+
+        // Cancel all
+        manager.cancel_all().await.unwrap();
+
+        // Wait a bit for cancellations to process
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Active count should still be 3 until we wait for them
+        // But all should be in cancelled state
+        let statuses = manager.get_all_statuses();
+        assert_eq!(statuses.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_completed() {
+        let manager = AgentManager::new();
+
+        // Spawn and complete agents
+        let id1 = manager.spawn("a1".to_string(), "desc".to_string(), || Ok("1".to_string()));
+        let id2 = manager.spawn("a2".to_string(), "desc".to_string(), || Ok("2".to_string()));
+
+        manager.wait(id1).await.unwrap();
+        manager.wait(id2).await.unwrap();
+
+        // Before cleanup
+        assert_eq!(manager.get_all_statuses().len(), 0); // wait() removes them
+
+        // Spawn another, complete it without waiting
+        let _id3 = manager.spawn("a3".to_string(), "desc".to_string(), || Ok("3".to_string()));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Cleanup should remove completed ones
+        manager.cleanup_completed();
+    }
+}

@@ -1325,7 +1325,7 @@ src/
 **Goal:** Visual orchestration of parallel agent tasks.
 
 **Deliverables:**
-- [ ] Agent manager (spawn, track, cancel agents)
+- [x] Agent manager (spawn, track, cancel agents)
 - [ ] Agent state machine (queued → running → complete/failed)
 - [ ] Multi-agent status bar UI
 - [ ] Progress tracking per agent
