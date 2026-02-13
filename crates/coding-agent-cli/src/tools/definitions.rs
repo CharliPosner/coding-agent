@@ -742,6 +742,139 @@ mod tests {
     }
 
     #[test]
+    fn test_bash_command_fails_with_exit_code() {
+        let input = json!({
+            "command": "exit 1"
+        });
+
+        let result = bash(input);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Command failed"));
+        assert!(err.contains("exit code"));
+    }
+
+    #[test]
+    fn test_bash_command_with_stderr_on_success() {
+        // Some commands write to stderr but still succeed (exit 0)
+        // Using a subshell to write to stderr
+        let input = json!({
+            "command": "echo 'stderr output' >&2 && echo 'stdout output'"
+        });
+
+        let result = bash(input);
+        assert!(result.is_ok());
+        // Should return stdout when command succeeds
+        assert_eq!(result.unwrap(), "stdout output");
+    }
+
+    #[test]
+    fn test_bash_command_only_stderr_on_success() {
+        // Command that only writes to stderr but succeeds
+        let input = json!({
+            "command": "echo 'only stderr' >&2"
+        });
+
+        let result = bash(input);
+        assert!(result.is_ok());
+        // Should return stderr when stdout is empty
+        assert_eq!(result.unwrap(), "only stderr");
+    }
+
+    #[test]
+    fn test_bash_dangerous_patterns_all_blocked() {
+        let dangerous_commands = vec![
+            "rm -rf /*",
+            "> /dev/sda",
+            "mkfs.ext4 /dev/sda",
+            ":(){:|:&};:", // Fork bomb
+        ];
+
+        for cmd in dangerous_commands {
+            let input = json!({
+                "command": cmd
+            });
+
+            let result = bash(input);
+            assert!(
+                result.is_err(),
+                "Command '{}' should be blocked as dangerous",
+                cmd
+            );
+            assert!(
+                result.as_ref().unwrap_err().contains("dangerous"),
+                "Error message for '{}' should mention 'dangerous'",
+                cmd
+            );
+        }
+    }
+
+    #[test]
+    fn test_bash_command_with_working_directory() {
+        // Test that commands run in the current working directory
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test_file.txt");
+        fs::write(&file_path, "test content").unwrap();
+
+        // Use ls with the temp directory path
+        let input = json!({
+            "command": format!("ls {}", dir.path().to_str().unwrap())
+        });
+
+        let result = bash(input);
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("test_file.txt"));
+    }
+
+    #[test]
+    fn test_bash_command_with_pipe() {
+        let input = json!({
+            "command": "echo 'hello world' | wc -w"
+        });
+
+        let result = bash(input);
+        assert!(result.is_ok());
+        // wc -w should return 2 (with whitespace trimmed)
+        assert_eq!(result.unwrap().trim(), "2");
+    }
+
+    #[test]
+    fn test_bash_command_with_environment_variable() {
+        let input = json!({
+            "command": "TEST_VAR='hello' && echo $TEST_VAR"
+        });
+
+        let result = bash(input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_bash_command_multiline_output() {
+        let input = json!({
+            "command": "echo 'line1' && echo 'line2' && echo 'line3'"
+        });
+
+        let result = bash(input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("line1"));
+        assert!(output.contains("line2"));
+        assert!(output.contains("line3"));
+    }
+
+    #[test]
+    fn test_bash_command_with_special_characters() {
+        let input = json!({
+            "command": "echo 'hello \"world\"'"
+        });
+
+        let result = bash(input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "hello \"world\"");
+    }
+
+    #[test]
     fn test_execute_tool() {
         let definitions = create_tool_definitions();
         let dir = tempdir().unwrap();
