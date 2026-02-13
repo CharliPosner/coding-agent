@@ -855,4 +855,136 @@ mod tests {
         // retry 5: 1000 * 2^4 = 16000, capped at 10000
         assert_eq!(executor.calculate_retry_delay(5), Duration::from_millis(10000));
     }
+
+    #[test]
+    fn test_retry_backoff_timing() {
+        // Test that exponential backoff works correctly (mirrors spec requirement)
+        let config = ToolExecutorConfig {
+            base_retry_delay_ms: 100, // Use small delays for test speed
+            max_retry_delay_ms: 1000,
+            ..Default::default()
+        };
+        let executor = ToolExecutor::new(config);
+
+        // Verify backoff sequence: 100, 200, 400, 800, capped at 1000
+        assert_eq!(executor.calculate_retry_delay(1), Duration::from_millis(100));
+        assert_eq!(executor.calculate_retry_delay(2), Duration::from_millis(200));
+        assert_eq!(executor.calculate_retry_delay(3), Duration::from_millis(400));
+        assert_eq!(executor.calculate_retry_delay(4), Duration::from_millis(800));
+        assert_eq!(executor.calculate_retry_delay(5), Duration::from_millis(1000)); // capped
+        assert_eq!(executor.calculate_retry_delay(10), Duration::from_millis(1000)); // still capped
+    }
+
+    #[test]
+    fn test_max_retries_exceeded() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        // Track how many times the tool is called
+        static CALL_COUNT: AtomicU32 = AtomicU32::new(0);
+
+        fn network_fail_tool(_: Value) -> Result<String, String> {
+            CALL_COUNT.fetch_add(1, Ordering::SeqCst);
+            // Return a retriable network error
+            Err("Connection refused: server not available".to_string())
+        }
+
+        // Reset counter before test
+        CALL_COUNT.store(0, Ordering::SeqCst);
+
+        let config = ToolExecutorConfig {
+            max_retries: 3,
+            base_retry_delay_ms: 1, // Very short delay for test speed
+            max_retry_delay_ms: 10,
+            ..Default::default()
+        };
+        let mut executor = ToolExecutor::new(config);
+        executor.register_tool("network_fail", network_fail_tool);
+
+        let result = executor.execute("call_1", "network_fail", serde_json::json!({}));
+
+        // Should have failed after max_retries attempts
+        assert!(!result.is_success());
+        assert_eq!(result.retries, 3); // Should have retried 3 times
+
+        // Total calls = 1 initial + 3 retries = 4
+        assert_eq!(CALL_COUNT.load(Ordering::SeqCst), 4);
+
+        // Error should still be the network error
+        let error = result.error().unwrap();
+        assert!(error.message.contains("Connection refused"));
+        assert!(matches!(
+            error.category,
+            ErrorCategory::Network { is_transient: true }
+        ));
+    }
+
+    #[test]
+    fn test_non_retriable_error_no_retry() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        static CALL_COUNT: AtomicU32 = AtomicU32::new(0);
+
+        fn permission_fail_tool(_: Value) -> Result<String, String> {
+            CALL_COUNT.fetch_add(1, Ordering::SeqCst);
+            // Return a non-retriable permission error
+            Err("Permission denied: '/etc/passwd'".to_string())
+        }
+
+        CALL_COUNT.store(0, Ordering::SeqCst);
+
+        let config = ToolExecutorConfig {
+            max_retries: 3,
+            base_retry_delay_ms: 1,
+            max_retry_delay_ms: 10,
+            ..Default::default()
+        };
+        let mut executor = ToolExecutor::new(config);
+        executor.register_tool("permission_fail", permission_fail_tool);
+
+        let result = executor.execute("call_1", "permission_fail", serde_json::json!({}));
+
+        // Should have failed immediately without retries
+        assert!(!result.is_success());
+        assert_eq!(result.retries, 0); // No retries for non-retriable errors
+
+        // Only called once
+        assert_eq!(CALL_COUNT.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_retry_succeeds_on_second_attempt() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        static CALL_COUNT: AtomicU32 = AtomicU32::new(0);
+
+        fn flaky_network_tool(_: Value) -> Result<String, String> {
+            let count = CALL_COUNT.fetch_add(1, Ordering::SeqCst);
+            if count == 0 {
+                // First call fails with retriable error
+                Err("Connection timed out".to_string())
+            } else {
+                // Subsequent calls succeed
+                Ok("Success!".to_string())
+            }
+        }
+
+        CALL_COUNT.store(0, Ordering::SeqCst);
+
+        let config = ToolExecutorConfig {
+            max_retries: 3,
+            base_retry_delay_ms: 1,
+            max_retry_delay_ms: 10,
+            ..Default::default()
+        };
+        let mut executor = ToolExecutor::new(config);
+        executor.register_tool("flaky", flaky_network_tool);
+
+        let result = executor.execute("call_1", "flaky", serde_json::json!({}));
+
+        // Should have succeeded on retry
+        assert!(result.is_success());
+        assert_eq!(result.retries, 1); // Succeeded on first retry
+        assert_eq!(CALL_COUNT.load(Ordering::SeqCst), 2); // Called twice total
+        assert_eq!(result.result.unwrap(), "Success!");
+    }
 }
