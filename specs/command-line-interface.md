@@ -1328,7 +1328,7 @@ src/
 - [x] Agent manager (spawn, track, cancel agents)
 - [x] Agent state machine (queued → running → complete/failed)
 - [x] Multi-agent status bar UI
-- [ ] Progress tracking per agent
+- [x] Progress tracking per agent
 - [ ] Agent result aggregation
 - [ ] Cancel individual agents
 - [ ] Parallel execution with `tokio`

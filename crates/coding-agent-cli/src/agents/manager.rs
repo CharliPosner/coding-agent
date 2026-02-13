@@ -10,10 +10,41 @@ use tokio::task::JoinHandle;
 
 use super::status::{AgentId, AgentState, AgentStatus};
 
+/// Progress reporter that agents can use to update their progress.
+#[derive(Clone)]
+pub struct ProgressReporter {
+    agent_id: AgentId,
+    tx: mpsc::UnboundedSender<ProgressUpdate>,
+}
+
+/// Internal message for progress updates.
+struct ProgressUpdate {
+    agent_id: AgentId,
+    progress: u8,
+}
+
+impl ProgressReporter {
+    /// Reports progress (0-100) for this agent.
+    pub fn report(&self, progress: u8) {
+        let _ = self.tx.send(ProgressUpdate {
+            agent_id: self.agent_id,
+            progress: progress.min(100),
+        });
+    }
+
+    /// Reports progress with a description update.
+    pub fn report_with_description(&self, progress: u8, _description: &str) {
+        // For now, just report progress. Description updates can be added later.
+        self.report(progress);
+    }
+}
+
 /// Agent manager handles spawning, tracking, and canceling multiple agents.
 pub struct AgentManager {
     agents: Arc<Mutex<HashMap<AgentId, ManagedAgent>>>,
     next_id: Arc<Mutex<u64>>,
+    progress_tx: mpsc::UnboundedSender<ProgressUpdate>,
+    progress_rx: Arc<Mutex<mpsc::UnboundedReceiver<ProgressUpdate>>>,
 }
 
 /// Internal representation of a managed agent.
@@ -29,9 +60,12 @@ struct ManagedAgent {
 impl AgentManager {
     /// Creates a new agent manager.
     pub fn new() -> Self {
+        let (progress_tx, progress_rx) = mpsc::unbounded_channel();
         Self {
             agents: Arc::new(Mutex::new(HashMap::new())),
             next_id: Arc::new(Mutex::new(0)),
+            progress_tx,
+            progress_rx: Arc::new(Mutex::new(progress_rx)),
         }
     }
 
@@ -41,6 +75,19 @@ impl AgentManager {
     pub fn spawn<F>(&self, name: String, description: String, task: F) -> AgentId
     where
         F: FnOnce() -> Result<String, String> + Send + 'static,
+    {
+        self.spawn_with_progress(name, description, |_| task())
+    }
+
+    /// Spawns a new agent with progress reporting capabilities.
+    ///
+    /// The task function receives a `ProgressReporter` that it can use to
+    /// report progress during execution.
+    ///
+    /// Returns the agent ID.
+    pub fn spawn_with_progress<F>(&self, name: String, description: String, task: F) -> AgentId
+    where
+        F: FnOnce(ProgressReporter) -> Result<String, String> + Send + 'static,
     {
         // Generate unique ID
         let id = {
@@ -52,6 +99,12 @@ impl AgentManager {
 
         // Create cancellation channel
         let (cancel_tx, mut cancel_rx) = mpsc::channel(1);
+
+        // Create progress reporter for this agent
+        let reporter = ProgressReporter {
+            agent_id: id,
+            tx: self.progress_tx.clone(),
+        };
 
         // Spawn the agent task
         let agents_clone = Arc::clone(&self.agents);
@@ -68,7 +121,7 @@ impl AgentManager {
 
             // Run the task or check for cancellation
             tokio::select! {
-                result = tokio::task::spawn_blocking(move || task()) => {
+                result = tokio::task::spawn_blocking(move || task(reporter)) => {
                     match result {
                         Ok(task_result) => task_result,
                         Err(e) => Err(format!("Task panic: {}", e)),
@@ -230,6 +283,24 @@ impl AgentManager {
                 AgentState::Complete | AgentState::Failed | AgentState::Cancelled
             )
         });
+    }
+
+    /// Processes any pending progress updates from agents.
+    ///
+    /// This should be called periodically to update agent progress.
+    /// Returns the number of progress updates processed.
+    pub fn process_progress_updates(&self) -> usize {
+        let mut count = 0;
+        let mut rx = self.progress_rx.lock().unwrap();
+
+        // Process all pending updates
+        while let Ok(update) = rx.try_recv() {
+            if let Ok(()) = self.update_progress(update.agent_id, update.progress) {
+                count += 1;
+            }
+        }
+
+        count
     }
 }
 
@@ -394,7 +465,7 @@ mod tests {
             },
         );
 
-        // Update progress
+        // Update progress externally
         manager.update_progress(id, 50).unwrap();
         let status = manager.get_status(id).unwrap();
         assert_eq!(status.progress, 50);
@@ -405,6 +476,107 @@ mod tests {
         assert_eq!(status.progress, 100);
 
         manager.wait(id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_progress_reporter() {
+        let manager = AgentManager::new();
+
+        let id = manager.spawn_with_progress(
+            "reporter-agent".to_string(),
+            "Testing progress reporter".to_string(),
+            |reporter| {
+                // Report progress at different stages
+                reporter.report(25);
+                std::thread::sleep(Duration::from_millis(10));
+                reporter.report(50);
+                std::thread::sleep(Duration::from_millis(10));
+                reporter.report(75);
+                std::thread::sleep(Duration::from_millis(10));
+                reporter.report(100);
+                Ok("done".to_string())
+            },
+        );
+
+        // Give agent time to start and report some progress
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        // Process progress updates
+        let updates_processed = manager.process_progress_updates();
+        assert!(updates_processed > 0);
+
+        // Check that progress was updated
+        let status = manager.get_status(id).unwrap();
+        assert!(status.progress > 0);
+
+        manager.wait(id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_progress_clamped_to_100() {
+        let manager = AgentManager::new();
+
+        let id = manager.spawn_with_progress(
+            "clamped-agent".to_string(),
+            "Testing progress clamping".to_string(),
+            |reporter| {
+                // Try to report progress over 100
+                reporter.report(150);
+                Ok("done".to_string())
+            },
+        );
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        manager.process_progress_updates();
+
+        let status = manager.get_status(id).unwrap();
+        assert_eq!(status.progress, 100);
+
+        manager.wait(id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_multiple_agents_progress() {
+        let manager = AgentManager::new();
+
+        let id1 = manager.spawn_with_progress(
+            "agent-1".to_string(),
+            "First agent".to_string(),
+            |reporter| {
+                reporter.report(33);
+                std::thread::sleep(Duration::from_millis(50));
+                reporter.report(66);
+                std::thread::sleep(Duration::from_millis(50));
+                reporter.report(100);
+                Ok("result-1".to_string())
+            },
+        );
+
+        let id2 = manager.spawn_with_progress(
+            "agent-2".to_string(),
+            "Second agent".to_string(),
+            |reporter| {
+                reporter.report(50);
+                std::thread::sleep(Duration::from_millis(100));
+                reporter.report(100);
+                Ok("result-2".to_string())
+            },
+        );
+
+        // Process updates periodically
+        for _ in 0..5 {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            manager.process_progress_updates();
+        }
+
+        // Both agents should have made progress
+        let status1 = manager.get_status(id1).unwrap();
+        let status2 = manager.get_status(id2).unwrap();
+        assert!(status1.progress > 0);
+        assert!(status2.progress > 0);
+
+        manager.wait(id1).await.unwrap();
+        manager.wait(id2).await.unwrap();
     }
 
     #[tokio::test]
