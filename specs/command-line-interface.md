@@ -1085,7 +1085,7 @@ src/
 - [x] `read_file` tool - Read file contents
 - [x] `write_file` tool - Create/overwrite files
 - [x] `edit_file` tool - Make targeted edits to existing files
-- [ ] `list_files` tool - List directory contents
+- [x] `list_files` tool - List directory contents
 - [ ] `bash` tool - Execute shell commands
 - [ ] `code_search` tool - Search codebase with ripgrep patterns
 - [ ] Tool result display in REPL (formatted, syntax highlighted)
