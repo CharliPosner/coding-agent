@@ -1087,7 +1087,7 @@ src/
 - [x] `edit_file` tool - Make targeted edits to existing files
 - [x] `list_files` tool - List directory contents
 - [x] `bash` tool - Execute shell commands
-- [ ] `code_search` tool - Search codebase with ripgrep patterns
+- [x] `code_search` tool - Search codebase with ripgrep patterns
 - [ ] Tool result display in REPL (formatted, syntax highlighted)
 - [ ] Tool call visibility (show "Reading src/main.rs..." etc.)
 - [ ] Permission checks before write operations (use Phase 6 system)

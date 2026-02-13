@@ -898,4 +898,235 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Unknown tool: unknown_tool");
     }
+
+    // ============================================================================
+    // CodeSearch Tool Tests
+    // ============================================================================
+
+    #[test]
+    fn test_code_search_finds_pattern() {
+        // Create a temp directory with some test files
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn hello_world() {\n    println!(\"Hello\");\n}\n").unwrap();
+
+        let input = json!({
+            "pattern": "hello_world",
+            "path": dir.path().to_str().unwrap()
+        });
+
+        let result = code_search(input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("hello_world"));
+        assert!(output.contains("test.rs"));
+    }
+
+    #[test]
+    fn test_code_search_no_matches() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn foo() {}").unwrap();
+
+        let input = json!({
+            "pattern": "nonexistent_pattern_xyz123",
+            "path": dir.path().to_str().unwrap()
+        });
+
+        let result = code_search(input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "No matches found");
+    }
+
+    #[test]
+    fn test_code_search_empty_pattern() {
+        let input = json!({
+            "pattern": ""
+        });
+
+        let result = code_search(input);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "pattern is required");
+    }
+
+    #[test]
+    fn test_code_search_case_insensitive_default() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn HelloWorld() {}").unwrap();
+
+        // Search with lowercase - should match due to case insensitive default
+        let input = json!({
+            "pattern": "helloworld",
+            "path": dir.path().to_str().unwrap()
+        });
+
+        let result = code_search(input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("HelloWorld"));
+    }
+
+    #[test]
+    fn test_code_search_case_sensitive() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn HelloWorld() {}").unwrap();
+
+        // Search with lowercase and case_sensitive=true - should NOT match
+        let input = json!({
+            "pattern": "helloworld",
+            "path": dir.path().to_str().unwrap(),
+            "case_sensitive": true
+        });
+
+        let result = code_search(input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "No matches found");
+    }
+
+    #[test]
+    fn test_code_search_with_file_type() {
+        let dir = tempdir().unwrap();
+
+        // Create a .rs file and a .txt file with the same content
+        let rs_file = dir.path().join("test.rs");
+        let txt_file = dir.path().join("test.txt");
+        fs::write(&rs_file, "fn find_me() {}").unwrap();
+        fs::write(&txt_file, "fn find_me() {}").unwrap();
+
+        // Search only in rust files
+        let input = json!({
+            "pattern": "find_me",
+            "path": dir.path().to_str().unwrap(),
+            "file_type": "rust"
+        });
+
+        let result = code_search(input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("test.rs"));
+        // The txt file should not be in results
+        assert!(!output.contains("test.txt"));
+    }
+
+    #[test]
+    fn test_code_search_regex_pattern() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "fn func1() {}\nfn func2() {}\nfn other() {}").unwrap();
+
+        // Use regex pattern to find func followed by digit
+        let input = json!({
+            "pattern": "func\\d",
+            "path": dir.path().to_str().unwrap()
+        });
+
+        let result = code_search(input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("func1"));
+        assert!(output.contains("func2"));
+        assert!(!output.contains("other"));
+    }
+
+    #[test]
+    fn test_code_search_multiple_matches_in_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
+        fs::write(&file_path, "TODO: first\nsome code\nTODO: second\nmore code\nTODO: third").unwrap();
+
+        let input = json!({
+            "pattern": "TODO:",
+            "path": dir.path().to_str().unwrap()
+        });
+
+        let result = code_search(input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        // Should show line numbers
+        assert!(output.contains(":1:"));  // Line 1
+        assert!(output.contains(":3:"));  // Line 3
+        assert!(output.contains(":5:"));  // Line 5
+    }
+
+    #[test]
+    fn test_code_search_across_multiple_files() {
+        let dir = tempdir().unwrap();
+        let file1 = dir.path().join("file1.rs");
+        let file2 = dir.path().join("file2.rs");
+        fs::write(&file1, "fn shared_pattern() {}").unwrap();
+        fs::write(&file2, "fn shared_pattern() {}").unwrap();
+
+        let input = json!({
+            "pattern": "shared_pattern",
+            "path": dir.path().to_str().unwrap()
+        });
+
+        let result = code_search(input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("file1.rs"));
+        assert!(output.contains("file2.rs"));
+    }
+
+    #[test]
+    fn test_code_search_in_subdirectory() {
+        let dir = tempdir().unwrap();
+        let subdir = dir.path().join("subdir");
+        fs::create_dir(&subdir).unwrap();
+        let file_path = subdir.join("nested.rs");
+        fs::write(&file_path, "fn nested_function() {}").unwrap();
+
+        let input = json!({
+            "pattern": "nested_function",
+            "path": dir.path().to_str().unwrap()
+        });
+
+        let result = code_search(input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.contains("nested.rs"));
+        assert!(output.contains("nested_function"));
+    }
+
+    #[test]
+    fn test_code_search_default_path() {
+        // Test that default path works (searches current directory)
+        // This test verifies the tool doesn't error with no path specified
+        // We search for a pattern we know exists in this crate (fn code_search)
+        let input = json!({
+            "pattern": "fn code_search"
+        });
+
+        let result = code_search(input);
+        // Should succeed and find matches (tool runs without explicit path)
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        // Should find this function definition (which proves default path works)
+        assert!(output.contains("fn code_search"));
+    }
+
+    #[test]
+    fn test_code_search_truncates_many_results() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+
+        // Create a file with more than 50 matching lines
+        let content: String = (0..60)
+            .map(|i| format!("line {} MATCH_ME\n", i))
+            .collect();
+        fs::write(&file_path, content).unwrap();
+
+        let input = json!({
+            "pattern": "MATCH_ME",
+            "path": dir.path().to_str().unwrap()
+        });
+
+        let result = code_search(input);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        // Should indicate truncation
+        assert!(output.contains("showing first 50 of 60 matches"));
+    }
 }
