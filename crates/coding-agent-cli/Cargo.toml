@@ -27,6 +27,7 @@ console = { workspace = true }
 syntect = { workspace = true }
 tiktoken-rs = { workspace = true }
 glob = { workspace = true }
+git2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.10"

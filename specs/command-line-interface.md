@@ -1081,7 +1081,7 @@ src/
 **Goal:** Smart commits with purpose-focused messages.
 
 **Deliverables:**
-- [ ] Git status reading with `git2`
+- [x] Git status reading with `git2`
 - [ ] `/commit` command (agent decides what to commit)
 - [ ] `/commit --pick` (interactive file picker)
 - [ ] Smart file grouping (logically related changes)
