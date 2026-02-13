@@ -969,7 +969,7 @@ src/
 **Deliverables:**
 - [x] Trusted paths configuration
 - [x] Path matching logic (supports `~`, globs)
-- [ ] Permission check before file write/modify
+- [x] Permission check before file write/modify
 - [ ] Permission prompt UI (Y/n/always/never)
 - [ ] "Always" adds to trusted paths in config
 - [ ] Read operations always allowed
