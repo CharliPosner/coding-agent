@@ -905,7 +905,7 @@ src/
 **Deliverables:**
 - [x] Token counting with `tiktoken-rs`
 - [x] Context bar component (bottom of screen)
-- [ ] Color-coded usage (green/yellow/red)
+- [x] Color-coded usage (green/yellow/red)
 - [ ] Real-time updates after each message
 - [ ] `/cost` command with detailed breakdown
 - [ ] `/context` command showing loaded files, working dir
