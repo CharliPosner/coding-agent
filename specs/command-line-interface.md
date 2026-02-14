@@ -2125,10 +2125,10 @@ match result.result {
    - [x] Trigger fun fact on first threshold crossing
 
 3. **Enhanced Tool Result Formatting**
-   - [ ] Use `ToolResultFormatter::format_result()` consistently
-   - [ ] Add syntax highlighting for code in results
-   - [ ] Implement collapsible sections for long outputs
-   - [ ] Add line numbers to file reads
+   - [x] Use `ToolResultFormatter::format_result()` consistently
+   - [x] Add syntax highlighting for code in results
+   - [x] Implement collapsible sections for long outputs
+   - [x] Add line numbers to file reads
 
 **Implementation approach:**
 
