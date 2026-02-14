@@ -48,7 +48,6 @@ pub struct AgentManager {
 }
 
 /// Internal representation of a managed agent.
-#[allow(dead_code)]
 struct ManagedAgent {
     name: String,
     description: String,

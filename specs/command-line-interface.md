@@ -2348,7 +2348,7 @@ async fn test_permission_prompt_workflow() {
    - [x] Document tool execution pipeline
 
 3. **Remove Temporary Allows**
-   - [ ] Remove any `#[allow(dead_code)]` annotations added temporarily
+   - [x] Remove any `#[allow(dead_code)]` annotations added temporarily
    - [ ] Verify all code is actually used
    - [ ] Clean up any debug prints or temporary code
 
