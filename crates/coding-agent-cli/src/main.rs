@@ -1,3 +1,7 @@
+// Allow dead code for modules that are not yet fully integrated in Phase 14
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
 mod agents;
 mod cli;
 mod config;

@@ -3,6 +3,10 @@
 //! This library provides the core functionality for the coding-agent CLI,
 //! including the REPL, commands, UI components, and integrations.
 
+// Allow dead code for library API that's not yet fully integrated in Phase 14
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
 pub mod agents;
 pub mod cli;
 pub mod config;

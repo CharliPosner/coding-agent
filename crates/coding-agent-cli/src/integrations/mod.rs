@@ -7,9 +7,6 @@ pub mod git;
 pub mod obsidian;
 pub mod specstory;
 
-pub use git::{
-    suggest_commit_splits, FileGroup, FileGrouper, FileStatus, FileStatusKind, GitError, GitRepo,
-    GroupReason, RepoStatus,
-};
-pub use obsidian::{Note, NoteMetadata, NoteType, ObsidianError, ObsidianVault, SearchResult};
-pub use specstory::{MessageRole, Session, SessionInfo, SessionManager, SpecStoryError};
+pub use git::{FileGrouper, GitRepo};
+pub use obsidian::{NoteType, ObsidianError, ObsidianVault};
+pub use specstory::{Session, SessionInfo, SessionManager, SpecStoryError};

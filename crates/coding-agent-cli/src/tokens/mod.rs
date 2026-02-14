@@ -9,4 +9,4 @@ mod pricing;
 
 pub use cost_tracker::CostTracker;
 pub use counter::{TokenCount, TokenCounter, TokenCounterError};
-pub use pricing::{available_models, ModelPricing, PricingError};
+pub use pricing::ModelPricing;
