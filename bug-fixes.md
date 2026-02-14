@@ -13,16 +13,17 @@ Iterative bug fix list. Work through each bug in order.
 - But percentage displays "0% used"
 - Token count stays at "1k / 200k" and doesn't update after conversation exchanges
 
-**Root Cause Investigation**:
-- Check `render()` method in context_bar.rs - bar fill calculation may be inverted
-- Check `update_context_tokens()` in repl.rs - tokens may not be accumulating
-- The filled/empty character logic may be backwards
+**Root Cause**:
+- Unicode block characters (█/░) render identically in default macOS Terminal
+- The logic was correct, but visual representation failed due to font rendering
+- Solution: Switch to ASCII characters (= for filled, - for empty)
 
 ### Checklist
-- [x] Identify the bar calculation bug in `context_bar.rs:render()`
-- [x] Fix filled vs empty portion logic
+- [x] Identify the bar calculation bug in `context_bar.rs:render()` (logic was correct, font issue)
+- [x] Replace Unicode characters with ASCII (= and -) for universal visibility
 - [x] Verify token count updates after each exchange
 - [x] Test color transitions at 60% and 85% thresholds
+- [x] Add debug test to verify actual character output
 
 ### Tests
 
@@ -35,10 +36,11 @@ Iterative bug fix list. Work through each bug in order.
 
 **Stopping condition:**
 ```
-✓ Empty context shows empty bar with 0%
-✓ Bar fill matches percentage displayed
+✓ Empty context shows empty bar with 0% (all dashes)
+✓ Bar fill matches percentage displayed (= vs - clearly distinguishable)
 ✓ Token count increments after each exchange
 ✓ All unit tests pass
+✓ Visual verification in macOS Terminal shows correct rendering
 ```
 
 ---
