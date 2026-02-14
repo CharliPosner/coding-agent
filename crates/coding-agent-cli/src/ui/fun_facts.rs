@@ -261,14 +261,14 @@ impl Default for FunFactCache {
 /// Client for fetching fun facts from various APIs
 #[derive(Debug, Clone)]
 pub struct FunFactClient {
-    client: reqwest::blocking::Client,
+    client: reqwest::Client,
     cache: FunFactCache,
 }
 
 impl FunFactClient {
     /// Create a new fun fact client with default timeout and load cache
     pub fn new() -> Result<Self, String> {
-        let client = reqwest::blocking::Client::builder()
+        let client = reqwest::Client::builder()
             .timeout(API_TIMEOUT)
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
@@ -281,7 +281,7 @@ impl FunFactClient {
 
     /// Create a new fun fact client with an existing cache
     pub fn with_cache(cache: FunFactCache) -> Result<Self, String> {
-        let client = reqwest::blocking::Client::builder()
+        let client = reqwest::Client::builder()
             .timeout(API_TIMEOUT)
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
@@ -300,16 +300,16 @@ impl FunFactClient {
     }
 
     /// Fetch a fun fact from the specified source
-    pub fn fetch(&self, source: FactSource) -> Result<FunFact, String> {
+    pub async fn fetch(&self, source: FactSource) -> Result<FunFact, String> {
         match source {
-            FactSource::UselessFacts => self.fetch_useless_fact(),
-            FactSource::Jokes => self.fetch_joke(),
-            FactSource::Quotes => self.fetch_quote(),
+            FactSource::UselessFacts => self.fetch_useless_fact().await,
+            FactSource::Jokes => self.fetch_joke().await,
+            FactSource::Quotes => self.fetch_quote().await,
         }
     }
 
     /// Fetch a random fun fact from any available source
-    pub fn fetch_random(&self) -> Result<FunFact, String> {
+    pub async fn fetch_random(&self) -> Result<FunFact, String> {
         // Try each source in order until one succeeds
         let sources = [
             FactSource::UselessFacts,
@@ -320,7 +320,7 @@ impl FunFactClient {
         let mut last_error = String::new();
 
         for source in sources {
-            match self.fetch(source) {
+            match self.fetch(source).await {
                 Ok(fact) => return Ok(fact),
                 Err(e) => last_error = e,
             }
@@ -355,11 +355,11 @@ impl FunFactClient {
     /// 3. Add newly fetched facts to the cache
     /// 4. If all else fails, fall back to curated list
     /// 5. Always returns a fact (never fails)
-    pub fn get_fact(&mut self) -> FunFact {
+    pub async fn get_fact(&mut self) -> FunFact {
         // If cache is empty or needs refresh, try to fetch and cache new facts
         if self.cache.is_empty() || self.cache.needs_refresh() {
             // Try to fetch a fact and add it to cache
-            match self.fetch_random() {
+            match self.fetch_random().await {
                 Ok(fact) => {
                     self.cache.add(fact.clone());
                     // Try to save cache (ignore errors, we still have the fact)
@@ -383,11 +383,21 @@ impl FunFactClient {
             .unwrap_or_else(|| Self::get_fallback_fact())
     }
 
+    /// Get a fun fact synchronously from cache or fallback only (no API calls)
+    ///
+    /// This is useful when you need a fact but can't await.
+    /// It will return a cached fact if available, or a fallback fact.
+    pub fn get_fact_sync(&self) -> FunFact {
+        self.cache
+            .get_random()
+            .unwrap_or_else(|| Self::get_fallback_fact())
+    }
+
     /// Preload cache with multiple facts from various sources
     ///
     /// This method fetches facts from all sources and adds them to the cache.
     /// Useful for warming up the cache in the background.
-    pub fn preload_cache(&mut self, count: usize) -> Result<usize, String> {
+    pub async fn preload_cache(&mut self, count: usize) -> Result<usize, String> {
         let sources = [
             FactSource::UselessFacts,
             FactSource::Jokes,
@@ -400,7 +410,7 @@ impl FunFactClient {
             // Rotate through sources
             let source = sources[loaded % sources.len()];
 
-            match self.fetch(source) {
+            match self.fetch(source).await {
                 Ok(fact) => {
                     self.cache.add(fact);
                     loaded += 1;
@@ -421,11 +431,12 @@ impl FunFactClient {
         }
     }
 
-    fn fetch_useless_fact(&self) -> Result<FunFact, String> {
+    async fn fetch_useless_fact(&self) -> Result<FunFact, String> {
         let response = self
             .client
             .get("https://uselessfacts.jsph.pl/random.json?language=en")
             .send()
+            .await
             .map_err(|e| format!("Failed to fetch useless fact: {}", e))?;
 
         if !response.status().is_success() {
@@ -437,16 +448,18 @@ impl FunFactClient {
 
         let fact: UselessFactResponse = response
             .json()
+            .await
             .map_err(|e| format!("Failed to parse useless fact response: {}", e))?;
 
         Ok(FunFact::new(fact.text, "uselessfacts.jsph.pl"))
     }
 
-    fn fetch_joke(&self) -> Result<FunFact, String> {
+    async fn fetch_joke(&self) -> Result<FunFact, String> {
         let response = self
             .client
             .get("https://official-joke-api.appspot.com/random_joke")
             .send()
+            .await
             .map_err(|e| format!("Failed to fetch joke: {}", e))?;
 
         if !response.status().is_success() {
@@ -455,17 +468,19 @@ impl FunFactClient {
 
         let joke: JokeResponse = response
             .json()
+            .await
             .map_err(|e| format!("Failed to parse joke response: {}", e))?;
 
         let text = format!("{}\n{}", joke.setup, joke.punchline);
         Ok(FunFact::new(text, "official-joke-api.appspot.com"))
     }
 
-    fn fetch_quote(&self) -> Result<FunFact, String> {
+    async fn fetch_quote(&self) -> Result<FunFact, String> {
         let response = self
             .client
             .get("https://api.quotable.io/random")
             .send()
+            .await
             .map_err(|e| format!("Failed to fetch quote: {}", e))?;
 
         if !response.status().is_success() {
@@ -474,6 +489,7 @@ impl FunFactClient {
 
         let quote: QuoteResponse = response
             .json()
+            .await
             .map_err(|e| format!("Failed to parse quote response: {}", e))?;
 
         let text = format!("{} — {}", quote.content, quote.author);
@@ -733,28 +749,53 @@ mod tests {
     }
 
     #[test]
-    fn test_client_get_fact_from_empty_cache() {
+    fn test_client_get_fact_sync_from_empty_cache() {
+        let cache = FunFactCache::new();
+        let client = FunFactClient::with_cache(cache).unwrap();
+
+        // Since cache is empty, should return fallback fact
+        let fact = client.get_fact_sync();
+
+        // Should always return a fact (from cache or fallback)
+        assert!(!fact.text.is_empty());
+        assert!(!fact.source.is_empty());
+    }
+
+    #[test]
+    fn test_client_get_fact_sync_from_populated_cache() {
+        let mut cache = FunFactCache::new();
+        cache.add(FunFact::new("Cached fact", "test-source"));
+
+        let client = FunFactClient::with_cache(cache).unwrap();
+
+        // Should return the cached fact
+        let fact = client.get_fact_sync();
+        assert_eq!(fact.text, "Cached fact");
+    }
+
+    #[tokio::test]
+    async fn test_client_get_fact_from_empty_cache() {
         let cache = FunFactCache::new();
         let mut client = FunFactClient::with_cache(cache).unwrap();
 
         // Since cache is empty and API calls would be needed,
-        // this should fall back to the curated list
-        let fact = client.get_fact();
+        // this should fall back to the curated list (or succeed if network is available)
+        let fact = client.get_fact().await;
 
         // Should always return a fact (from API, cache, or fallback)
         assert!(!fact.text.is_empty());
         assert!(!fact.source.is_empty());
     }
 
-    #[test]
-    fn test_client_get_fact_from_populated_cache() {
+    #[tokio::test]
+    async fn test_client_get_fact_from_populated_cache() {
         let mut cache = FunFactCache::new();
         cache.add(FunFact::new("Cached fact", "test-source"));
 
         let mut client = FunFactClient::with_cache(cache).unwrap();
 
         // Should return the cached fact
-        let fact = client.get_fact();
+        let fact = client.get_fact().await;
         assert_eq!(fact.text, "Cached fact");
     }
 
@@ -810,15 +851,15 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_get_fact_falls_back_when_cache_and_api_fail() {
+    #[tokio::test]
+    async fn test_get_fact_falls_back_when_cache_and_api_fail() {
         // Create a client with an empty cache
         // In offline mode, the API will fail
         let cache = FunFactCache::new();
         let mut client = FunFactClient::with_cache(cache).unwrap();
 
         // get_fact should never fail - it will use fallback if needed
-        let fact = client.get_fact();
+        let fact = client.get_fact().await;
 
         assert!(!fact.text.is_empty());
         // The fact could be from cache, API (if online), or fallback
@@ -828,11 +869,11 @@ mod tests {
     // Note: The following tests make real network calls and may be slow or fail if APIs are down
     // In a production environment, these would use mocked HTTP responses
 
-    #[test]
+    #[tokio::test]
     #[ignore] // Ignored by default to avoid network calls in CI
-    fn test_fetch_useless_fact() {
+    async fn test_fetch_useless_fact() {
         let client = FunFactClient::new().unwrap();
-        let result = client.fetch(FactSource::UselessFacts);
+        let result = client.fetch(FactSource::UselessFacts).await;
 
         // This might fail if the API is down, which is expected
         if let Ok(fact) = result {
@@ -841,11 +882,11 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore] // Ignored by default to avoid network calls in CI
-    fn test_fetch_joke() {
+    async fn test_fetch_joke() {
         let client = FunFactClient::new().unwrap();
-        let result = client.fetch(FactSource::Jokes);
+        let result = client.fetch(FactSource::Jokes).await;
 
         if let Ok(fact) = result {
             assert!(!fact.text.is_empty());
@@ -853,11 +894,11 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore] // Ignored by default to avoid network calls in CI
-    fn test_fetch_quote() {
+    async fn test_fetch_quote() {
         let client = FunFactClient::new().unwrap();
-        let result = client.fetch(FactSource::Quotes);
+        let result = client.fetch(FactSource::Quotes).await;
 
         if let Ok(fact) = result {
             assert!(!fact.text.is_empty());
@@ -865,11 +906,11 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore] // Ignored by default to avoid network calls in CI
-    fn test_fetch_random() {
+    async fn test_fetch_random() {
         let client = FunFactClient::new().unwrap();
-        let result = client.fetch_random();
+        let result = client.fetch_random().await;
 
         // At least one API should work
         if let Ok(fact) = result {
@@ -882,5 +923,79 @@ mod tests {
     fn test_default_client() {
         let _client = FunFactClient::default();
         // Should not panic
+    }
+
+    // =========================================================================
+    // Async context safety tests
+    // =========================================================================
+    // These tests verify that FunFactClient can be safely used and dropped
+    // within an async context. This catches issues like the "Cannot drop a
+    // runtime in a context where blocking is not allowed" panic that occurs
+    // when reqwest::blocking::Client is used inside a tokio runtime.
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_client_safe_to_create_in_async_context() {
+        // This test verifies that creating a FunFactClient inside an async
+        // context doesn't cause panics. Previously, using reqwest::blocking::Client
+        // would create a nested runtime that panicked on drop.
+        let client = FunFactClient::new();
+        assert!(client.is_ok(), "Should create client without panic");
+    }
+
+    #[tokio::test]
+    async fn test_client_safe_to_drop_in_async_context() {
+        // This test verifies that dropping a FunFactClient inside an async
+        // context doesn't cause panics. This was the root cause of the
+        // "/clear command panic" bug.
+        {
+            let _client = FunFactClient::new().unwrap();
+            // Client will be dropped here
+        }
+        // If we reach here without panic, the test passes
+    }
+
+    #[tokio::test]
+    async fn test_client_safe_to_use_and_drop_in_async_context() {
+        // Comprehensive test: create, use, and drop within async context
+        let mut client = FunFactClient::new().unwrap();
+
+        // Use the sync method (simulates what REPL does)
+        let fact = client.get_fact_sync();
+        assert!(!fact.text.is_empty());
+
+        // Use the async method
+        let fact_async = client.get_fact().await;
+        assert!(!fact_async.text.is_empty());
+
+        // Client will be dropped when function exits
+    }
+
+    #[tokio::test]
+    async fn test_multiple_clients_in_async_context() {
+        // Test that multiple clients can coexist and be dropped in async context
+        let client1 = FunFactClient::new().unwrap();
+        let client2 = FunFactClient::new().unwrap();
+
+        let fact1 = client1.get_fact_sync();
+        let fact2 = client2.get_fact_sync();
+
+        assert!(!fact1.text.is_empty());
+        assert!(!fact2.text.is_empty());
+
+        // Both clients dropped here
+    }
+
+    #[tokio::test]
+    async fn test_client_replacement_in_async_context() {
+        // Simulates what happens during /clear when state is reset
+        let mut client = FunFactClient::new().unwrap();
+        let _ = client.get_fact_sync();
+
+        // Replace the client (old one gets dropped)
+        client = FunFactClient::new().unwrap();
+        let _ = client.get_fact_sync();
+
+        // If we reach here without panic, replacement is safe
     }
 }

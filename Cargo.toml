@@ -49,3 +49,6 @@ futures = "0.3"
 
 # Date/time handling for Obsidian metadata
 chrono = "0.4"
+
+# Terminal markdown rendering
+termimad = "0.30"

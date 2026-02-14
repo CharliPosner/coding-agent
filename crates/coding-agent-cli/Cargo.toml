@@ -36,6 +36,7 @@ git2 = { workspace = true }
 reqwest = { workspace = true }
 futures = { workspace = true }
 chrono = { workspace = true }
+termimad = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.10"

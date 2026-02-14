@@ -48,10 +48,10 @@ fn test_fun_fact_client_creation() {
 #[test]
 fn test_fun_fact_always_returns_something() {
     let cache = FunFactCache::new();
-    let mut client = FunFactClient::with_cache(cache).unwrap();
+    let client = FunFactClient::with_cache(cache).unwrap();
 
-    // get_fact should never fail - it has fallbacks
-    let fact = client.get_fact();
+    // get_fact_sync should never fail - it has fallbacks
+    let fact = client.get_fact_sync();
 
     assert!(!fact.text.is_empty(), "Fact should have text");
     assert!(!fact.source.is_empty(), "Fact should have source");
@@ -61,10 +61,10 @@ fn test_fun_fact_always_returns_something() {
 fn test_fun_fact_from_empty_cache_uses_fallback() {
     // Create a client with empty cache (simulating offline mode)
     let cache = FunFactCache::new();
-    let mut client = FunFactClient::with_cache(cache).unwrap();
+    let client = FunFactClient::with_cache(cache).unwrap();
 
     // Should fall back to curated facts when cache is empty
-    let fact = client.get_fact();
+    let fact = client.get_fact_sync();
 
     // Fallback facts have source "curated" or from API
     assert!(!fact.text.is_empty());
@@ -75,10 +75,10 @@ fn test_fun_fact_from_populated_cache() {
     let mut cache = FunFactCache::new();
     cache.add(FunFact::new("Test fact", "test-source"));
 
-    let mut client = FunFactClient::with_cache(cache).unwrap();
+    let client = FunFactClient::with_cache(cache).unwrap();
 
     // Should return the cached fact
-    let fact = client.get_fact();
+    let fact = client.get_fact_sync();
     assert_eq!(fact.text, "Test fact");
     assert_eq!(fact.source, "test-source");
 }

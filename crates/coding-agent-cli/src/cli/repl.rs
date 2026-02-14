@@ -14,7 +14,7 @@ use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::tools::{
     create_tool_definitions, tool_definitions_to_api, ToolExecutor, ToolExecutorConfig,
 };
-use crate::ui::{ContextBar, FunFactClient, LongWaitDetector, StatusBar, Theme, ThinkingMessages, ToolExecutionSpinner, ToolResultFormatter};
+use crate::ui::{ContextBar, FunFactClient, LongWaitDetector, MarkdownRenderer, StatusBar, Theme, ThinkingMessages, ToolExecutionSpinner, ToolResultFormatter};
 use coding_agent_core::{
     ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition,
 };
@@ -110,6 +110,8 @@ pub struct Repl {
     status_bar: StatusBar,
     /// Track number of status bar lines rendered (for clearing)
     status_bar_lines: usize,
+    /// Markdown renderer for agent responses
+    markdown_renderer: MarkdownRenderer,
 }
 
 impl Repl {
@@ -211,6 +213,9 @@ impl Repl {
         // Initialize status bar with the same theme
         let status_bar = StatusBar::with_theme(theme.clone());
 
+        // Initialize markdown renderer
+        let markdown_renderer = MarkdownRenderer::new();
+
         Self {
             config,
             registry: CommandRegistry::with_defaults(),
@@ -237,6 +242,7 @@ impl Repl {
             theme,
             status_bar,
             status_bar_lines: 0,
+            markdown_renderer,
         }
     }
 
@@ -389,11 +395,11 @@ impl Repl {
             let thinking_msg = self.thinking_messages.current();
             self.print_line(thinking_msg);
 
-            // Pre-fetch a fun fact if enabled
+            // Pre-fetch a fun fact if enabled (using sync method to avoid async in this context)
             let fun_fact = if self.fun_facts_enabled && self.fun_fact_client.is_some() {
                 self.fun_fact_client
-                    .as_mut()
-                    .map(|client| client.get_fact())
+                    .as_ref()
+                    .map(|client| client.get_fact_sync())
             } else {
                 None
             };
@@ -463,12 +469,10 @@ impl Repl {
                 }
             }
 
-            // Display any text response
+            // Display any text response with markdown rendering
             if !response_text.is_empty() {
                 self.print_newline();
-                for line in response_text.lines() {
-                    self.print_line(line);
-                }
+                self.markdown_renderer.print(&response_text);
                 self.print_newline();
             }
 
