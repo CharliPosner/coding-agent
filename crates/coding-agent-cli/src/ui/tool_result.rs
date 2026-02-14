@@ -90,15 +90,40 @@ impl ToolResultFormatter {
         // Try to detect language from content (simple heuristics)
         let language = self.detect_language(content);
 
+        // Calculate line number width for padding
+        let line_num_width = if self.config.show_line_numbers {
+            total_lines.to_string().len()
+        } else {
+            0
+        };
+
         // Display content
         if self.config.enable_highlighting && language.is_some() {
             let highlighted = self.highlighter.highlight(content, language.unwrap());
-            for line in highlighted.lines().take(self.config.max_display_lines) {
-                result.push_str(&format!("  {}\r\n", line));
+            for (idx, line) in highlighted.lines().take(self.config.max_display_lines).enumerate() {
+                if self.config.show_line_numbers {
+                    let line_num = idx + 1;
+                    result.push_str(&format!(
+                        "  {} │ {}\r\n",
+                        self.theme.apply(Color::Muted, &format!("{:>width$}", line_num, width = line_num_width)),
+                        line
+                    ));
+                } else {
+                    result.push_str(&format!("  {}\r\n", line));
+                }
             }
         } else {
-            for line in display_lines {
-                result.push_str(&format!("  {}\r\n", line));
+            for (idx, line) in display_lines.iter().enumerate() {
+                if self.config.show_line_numbers {
+                    let line_num = idx + 1;
+                    result.push_str(&format!(
+                        "  {} │ {}\r\n",
+                        self.theme.apply(Color::Muted, &format!("{:>width$}", line_num, width = line_num_width)),
+                        line
+                    ));
+                } else {
+                    result.push_str(&format!("  {}\r\n", line));
+                }
             }
         }
 
@@ -498,5 +523,63 @@ mod tests {
         };
 
         assert!(!config.enable_highlighting);
+    }
+
+    #[test]
+    fn test_format_file_content_with_line_numbers() {
+        let config = ToolResultConfig {
+            max_display_lines: 50,
+            enable_highlighting: false,
+            show_line_numbers: true,
+        };
+        let formatter = ToolResultFormatter::with_config(config);
+        let content = "fn main() {\n    println!(\"Hello\");\n}";
+        let result = formatter.format_file_content(content);
+
+        // Should contain line numbers
+        assert!(result.contains("1 │"));
+        assert!(result.contains("2 │"));
+        assert!(result.contains("3 │"));
+        assert!(result.contains("fn main()"));
+    }
+
+    #[test]
+    fn test_format_file_content_without_line_numbers() {
+        let config = ToolResultConfig {
+            max_display_lines: 50,
+            enable_highlighting: false,
+            show_line_numbers: false,
+        };
+        let formatter = ToolResultFormatter::with_config(config);
+        let content = "fn main() {\n    println!(\"Hello\");\n}";
+        let result = formatter.format_file_content(content);
+
+        // Should NOT contain line numbers
+        assert!(!result.contains("1 │"));
+        assert!(!result.contains("2 │"));
+        assert!(result.contains("fn main()"));
+    }
+
+    #[test]
+    fn test_line_numbers_proper_padding() {
+        let config = ToolResultConfig {
+            max_display_lines: 50,
+            enable_highlighting: false,
+            show_line_numbers: true,
+        };
+        let formatter = ToolResultFormatter::with_config(config);
+
+        // Create content with 100 lines to test padding
+        let content = (1..=100)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let result = formatter.format_file_content(&content);
+
+        // Should have consistent width for all line numbers
+        // Line 1 should be padded to match line 100's width (3 digits)
+        assert!(result.contains("  1 │"));
+        assert!(result.contains(" 10 │"));
+        assert!(result.contains(" 50 │"));
     }
 }
