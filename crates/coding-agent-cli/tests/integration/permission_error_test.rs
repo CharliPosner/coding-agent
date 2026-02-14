@@ -38,7 +38,11 @@ fn test_permission_checker_records_decisions() {
     );
 
     // Record an "allowed" decision
-    checker.record_decision(&test_file, OperationType::Write, PermissionDecision::Allowed);
+    checker.record_decision(
+        &test_file,
+        OperationType::Write,
+        PermissionDecision::Allowed,
+    );
 
     // Should now be allowed
     assert_eq!(
@@ -136,7 +140,11 @@ fn test_permission_checker_different_operations() {
     let mut checker = PermissionChecker::new(trusted, true);
 
     // Allow write
-    checker.record_decision(&test_file, OperationType::Write, PermissionDecision::Allowed);
+    checker.record_decision(
+        &test_file,
+        OperationType::Write,
+        PermissionDecision::Allowed,
+    );
 
     // Write should be allowed
     assert_eq!(
@@ -182,7 +190,10 @@ fn test_always_adds_to_trusted_paths() {
 fn test_permission_error_vs_other_errors() {
     // Permission error
     let perm_error = ToolError::new("Permission denied: '/etc/passwd'");
-    assert!(matches!(perm_error.category, ErrorCategory::Permission { .. }));
+    assert!(matches!(
+        perm_error.category,
+        ErrorCategory::Permission { .. }
+    ));
     assert!(!perm_error.is_auto_fixable());
 
     // Code error (should be auto-fixable)
@@ -202,7 +213,10 @@ fn test_permission_error_not_retriable() {
     // Permission errors should not be automatically retried
     let error = ToolError::new("Permission denied: '/etc/shadow'");
 
-    assert!(!error.retriable, "Permission errors should not be retriable");
+    assert!(
+        !error.retriable,
+        "Permission errors should not be retriable"
+    );
     assert!(
         !error.is_auto_fixable(),
         "Permission errors should not be auto-fixable"

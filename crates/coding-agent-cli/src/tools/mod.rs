@@ -18,5 +18,7 @@ mod regression_tests;
 pub use auto_fix::FixApplicationResult;
 pub use definitions::{create_tool_definitions, execute_tool, tool_definitions_to_api};
 pub use diagnostics::{extract_fix_info, parse_compiler_output, Diagnostic, FixInfo, FixType};
-pub use executor::{ErrorCategory, ToolError, ToolExecutionResult, ToolExecutor, ToolExecutorConfig};
+pub use executor::{
+    ErrorCategory, ToolError, ToolExecutionResult, ToolExecutor, ToolExecutorConfig,
+};
 pub use regression_tests::{generate_regression_test, RegressionTest, RegressionTestConfig};

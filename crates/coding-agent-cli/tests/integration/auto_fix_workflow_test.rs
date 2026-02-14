@@ -32,8 +32,7 @@ edition = "2021"
 [dependencies]
 # serde_json is missing
 "#;
-    fs::write(temp_dir.path().join("Cargo.toml"), cargo_toml)
-        .expect("Failed to write Cargo.toml");
+    fs::write(temp_dir.path().join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
 
     // Create main.rs that uses serde_json
     let main_rs = r#"fn main() {
@@ -61,8 +60,7 @@ edition = "2021"
 [dependencies]
 serde_json = "1.0"
 "#;
-    fs::write(temp_dir.path().join("Cargo.toml"), cargo_toml)
-        .expect("Failed to write Cargo.toml");
+    fs::write(temp_dir.path().join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
 
     // Create main.rs that uses json! macro without importing it
     let main_rs = r#"fn main() {
@@ -157,14 +155,13 @@ fn test_auto_fix_missing_dependency_complete_flow() {
             // In a real implementation, we would use apply_fix from tools module
             // For this test, we'll manually add the dependency to Cargo.toml
             let cargo_toml_path = project_path.join("Cargo.toml");
-            let cargo_toml = fs::read_to_string(&cargo_toml_path)
-                .expect("Failed to read Cargo.toml");
+            let cargo_toml =
+                fs::read_to_string(&cargo_toml_path).expect("Failed to read Cargo.toml");
 
             if !cargo_toml.contains("serde_json") {
                 let mut new_cargo_toml = cargo_toml.clone();
                 new_cargo_toml.push_str("serde_json = \"1.0\"\n");
-                fs::write(&cargo_toml_path, new_cargo_toml)
-                    .expect("Failed to write Cargo.toml");
+                fs::write(&cargo_toml_path, new_cargo_toml).expect("Failed to write Cargo.toml");
 
                 // Run cargo update to download the dependency
                 let _ = std::process::Command::new("cargo")
@@ -204,8 +201,8 @@ fn test_auto_fix_missing_dependency_complete_flow() {
     );
 
     // Verify Cargo.toml was updated
-    let cargo_toml = fs::read_to_string(project_path.join("Cargo.toml"))
-        .expect("Failed to read Cargo.toml");
+    let cargo_toml =
+        fs::read_to_string(project_path.join("Cargo.toml")).expect("Failed to read Cargo.toml");
     assert!(
         cargo_toml.contains("serde_json"),
         "Cargo.toml should contain serde_json dependency after fix attempts"
@@ -214,10 +211,7 @@ fn test_auto_fix_missing_dependency_complete_flow() {
     // Note: The fix may or may not succeed depending on network conditions and cargo caching
     // The important part is that the agent attempted the fix and modified the file
     println!("Fix status: {:?}", agent.status());
-    println!(
-        "Number of attempts: {}",
-        fix_result.attempts.len()
-    );
+    println!("Number of attempts: {}", fix_result.attempts.len());
 
     // Verify regression test generation was attempted if configured
     if generate_tests {
@@ -279,7 +273,10 @@ fn test_auto_fix_max_attempts_exceeded() {
     );
 
     // Verify agent gave up after max attempts
-    assert!(!fix_result.is_success(), "Fix should fail for unfixable error");
+    assert!(
+        !fix_result.is_success(),
+        "Fix should fail for unfixable error"
+    );
     assert_eq!(*agent.status(), FixStatus::Failed);
     assert_eq!(
         fix_result.attempt_count(),
@@ -337,14 +334,13 @@ fn test_auto_fix_prevents_infinite_loops() {
         |_error_msg, _error_category| {
             // Manually fix by adding dependency
             let cargo_toml_path = project_path.join("Cargo.toml");
-            let cargo_toml = fs::read_to_string(&cargo_toml_path)
-                .expect("Failed to read Cargo.toml");
+            let cargo_toml =
+                fs::read_to_string(&cargo_toml_path).expect("Failed to read Cargo.toml");
 
             if !cargo_toml.contains("serde_json") {
                 let mut new_cargo_toml = cargo_toml.clone();
                 new_cargo_toml.push_str("serde_json = \"1.0\"\n");
-                fs::write(&cargo_toml_path, new_cargo_toml)
-                    .expect("Failed to write Cargo.toml");
+                fs::write(&cargo_toml_path, new_cargo_toml).expect("Failed to write Cargo.toml");
 
                 // Run cargo update to download the dependency
                 let _ = std::process::Command::new("cargo")
@@ -442,9 +438,7 @@ fn test_error_categorization_triggers_correct_recovery() {
     // Test 3: Network error -> handled by ToolExecutor retry logic, not FixAgent
     let network_error = ToolError::with_category(
         "Connection refused".to_string(),
-        ErrorCategory::Network {
-            is_transient: true,
-        },
+        ErrorCategory::Network { is_transient: true },
     )
     .with_suggested_fix("Retry with backoff".to_string());
 

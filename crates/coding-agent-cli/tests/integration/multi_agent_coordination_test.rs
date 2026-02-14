@@ -97,20 +97,32 @@ async fn test_coordinated_result_aggregation() {
     let manager = AgentManager::new();
 
     // Spawn agents that produce parts of a larger result
-    let id1 = manager.spawn("parser-agent".to_string(), "Parsing code".to_string(), || {
-        std::thread::sleep(Duration::from_millis(50));
-        Ok("Functions: 15".to_string())
-    });
+    let id1 = manager.spawn(
+        "parser-agent".to_string(),
+        "Parsing code".to_string(),
+        || {
+            std::thread::sleep(Duration::from_millis(50));
+            Ok("Functions: 15".to_string())
+        },
+    );
 
-    let id2 = manager.spawn("analyzer-agent".to_string(), "Analyzing".to_string(), || {
-        std::thread::sleep(Duration::from_millis(50));
-        Ok("Structs: 8".to_string())
-    });
+    let id2 = manager.spawn(
+        "analyzer-agent".to_string(),
+        "Analyzing".to_string(),
+        || {
+            std::thread::sleep(Duration::from_millis(50));
+            Ok("Structs: 8".to_string())
+        },
+    );
 
-    let id3 = manager.spawn("metrics-agent".to_string(), "Computing metrics".to_string(), || {
-        std::thread::sleep(Duration::from_millis(50));
-        Ok("Lines: 1234".to_string())
-    });
+    let id3 = manager.spawn(
+        "metrics-agent".to_string(),
+        "Computing metrics".to_string(),
+        || {
+            std::thread::sleep(Duration::from_millis(50));
+            Ok("Lines: 1234".to_string())
+        },
+    );
 
     // Aggregate results into a report
     let report = manager
@@ -197,41 +209,32 @@ async fn test_multi_agent_progress_tracking() {
     let manager = AgentManager::new();
 
     // Spawn 3 agents with progress reporting
-    let id1 = manager.spawn_with_progress(
-        "agent-1".to_string(),
-        "Task 1".to_string(),
-        |reporter| {
+    let id1 =
+        manager.spawn_with_progress("agent-1".to_string(), "Task 1".to_string(), |reporter| {
             for i in 1..=4 {
                 reporter.report(i * 25);
                 std::thread::sleep(Duration::from_millis(20));
             }
             Ok("Done 1".to_string())
-        },
-    );
+        });
 
-    let id2 = manager.spawn_with_progress(
-        "agent-2".to_string(),
-        "Task 2".to_string(),
-        |reporter| {
+    let id2 =
+        manager.spawn_with_progress("agent-2".to_string(), "Task 2".to_string(), |reporter| {
             for i in 1..=5 {
                 reporter.report(i * 20);
                 std::thread::sleep(Duration::from_millis(15));
             }
             Ok("Done 2".to_string())
-        },
-    );
+        });
 
-    let id3 = manager.spawn_with_progress(
-        "agent-3".to_string(),
-        "Task 3".to_string(),
-        |reporter| {
+    let id3 =
+        manager.spawn_with_progress("agent-3".to_string(), "Task 3".to_string(), |reporter| {
             for i in 1..=10 {
                 reporter.report(i * 10);
                 std::thread::sleep(Duration::from_millis(10));
             }
             Ok("Done 3".to_string())
-        },
-    );
+        });
 
     // Periodically process progress updates
     let mut progress_snapshots = Vec::new();
@@ -472,28 +475,20 @@ async fn test_mixed_async_sync_coordination() {
         Ok("sync-result-1".to_string())
     });
 
-    let async1 = manager.spawn_async(
-        "async-1".to_string(),
-        "Async work".to_string(),
-        |_| async {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            Ok("async-result-1".to_string())
-        },
-    );
+    let async1 = manager.spawn_async("async-1".to_string(), "Async work".to_string(), |_| async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok("async-result-1".to_string())
+    });
 
     let sync2 = manager.spawn("sync-2".to_string(), "Sync work".to_string(), || {
         std::thread::sleep(Duration::from_millis(100));
         Ok("sync-result-2".to_string())
     });
 
-    let async2 = manager.spawn_async(
-        "async-2".to_string(),
-        "Async work".to_string(),
-        |_| async {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            Ok("async-result-2".to_string())
-        },
-    );
+    let async2 = manager.spawn_async("async-2".to_string(), "Async work".to_string(), |_| async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok("async-result-2".to_string())
+    });
 
     // All should coordinate properly
     let results = manager

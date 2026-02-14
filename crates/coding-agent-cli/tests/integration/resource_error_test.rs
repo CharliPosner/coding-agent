@@ -116,10 +116,7 @@ fn test_tool_execution_result_resource_error() {
     // Verify the error is available
     let error = result.error().unwrap();
     assert!(error.message.contains("No space left"));
-    assert!(matches!(
-        error.category,
-        ErrorCategory::Resource { .. }
-    ));
+    assert!(matches!(error.category, ErrorCategory::Resource { .. }));
 }
 
 #[test]

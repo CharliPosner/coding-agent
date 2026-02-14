@@ -3,10 +3,10 @@
 //! This module provides functionality to search, create, and update notes
 //! in an Obsidian vault.
 
+use chrono::{DateTime, Local};
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use chrono::{DateTime, Local};
 
 /// Errors that can occur during Obsidian operations
 #[derive(Debug)]
@@ -136,7 +136,10 @@ impl NoteMetadata {
         let mut output = String::from("---\n");
 
         // Date
-        output.push_str(&format!("created: {}\n", self.created.format("%Y-%m-%d %H:%M")));
+        output.push_str(&format!(
+            "created: {}\n",
+            self.created.format("%Y-%m-%d %H:%M")
+        ));
 
         // Note type
         output.push_str(&format!("type: {}\n", self.note_type.display_name()));
@@ -457,7 +460,15 @@ fn infer_tags_from_topic(topic: &str, metadata: &mut NoteMetadata) {
 
     // Programming languages
     let languages = [
-        "rust", "python", "javascript", "typescript", "java", "c++", "c#", "go", "ruby",
+        "rust",
+        "python",
+        "javascript",
+        "typescript",
+        "java",
+        "c++",
+        "c#",
+        "go",
+        "ruby",
     ];
     for lang in &languages {
         if topic_lower.contains(lang) {

@@ -66,10 +66,7 @@ fn test_tool_execution_succeeds_on_first_retry() {
     // Verify success after retry
     assert!(result.is_success(), "Expected success after retry");
     assert_eq!(result.retries, 1, "Should have retried exactly once");
-    assert_eq!(
-        result.result.unwrap(),
-        "Data retrieved successfully"
-    );
+    assert_eq!(result.result.unwrap(), "Data retrieved successfully");
 
     // Verify tool was called twice (initial + 1 retry)
     assert_eq!(CALL_COUNT.load(Ordering::SeqCst), 2);
@@ -197,7 +194,11 @@ fn test_non_retriable_error_no_retry_integration() {
     // Should have failed immediately without retries
     assert!(!result.is_success());
     assert_eq!(result.retries, 0, "Should not have retried");
-    assert_eq!(CALL_COUNT.load(Ordering::SeqCst), 1, "Should only call once");
+    assert_eq!(
+        CALL_COUNT.load(Ordering::SeqCst),
+        1,
+        "Should only call once"
+    );
 
     // Should have failed quickly (no retry delays)
     assert!(
@@ -322,11 +323,7 @@ fn test_retry_with_different_error_types() {
         // For this test, we just verify categorization
         // Testing actual retry behavior is covered in other tests
         let error = ToolError::new(error_msg);
-        assert!(
-            error.retriable,
-            "Error '{}' should be retriable",
-            error_msg
-        );
+        assert!(error.retriable, "Error '{}' should be retriable", error_msg);
         assert!(matches!(
             error.category,
             ErrorCategory::Network { is_transient: true }
@@ -363,14 +360,8 @@ fn test_max_retry_delay_cap() {
     // retry 4: 800ms -> capped at 500ms
     // retry 5+: still 500ms
 
-    assert_eq!(
-        executor.config().base_retry_delay_ms,
-        100
-    );
-    assert_eq!(
-        executor.config().max_retry_delay_ms,
-        500
-    );
+    assert_eq!(executor.config().base_retry_delay_ms, 100);
+    assert_eq!(executor.config().max_retry_delay_ms, 500);
 
     // The executor should cap delays - verified in unit tests
     // This integration test verifies the config is respected
@@ -396,7 +387,11 @@ fn test_retry_preserves_call_id_and_tool_name() {
     let mut executor = ToolExecutor::with_defaults();
     executor.register_tool("metadata_test", flaky_tool);
 
-    let result = executor.execute("unique_call_id_123", "metadata_test", json!({"key": "value"}));
+    let result = executor.execute(
+        "unique_call_id_123",
+        "metadata_test",
+        json!({"key": "value"}),
+    );
 
     assert!(result.is_success());
     assert_eq!(result.call_id, "unique_call_id_123");

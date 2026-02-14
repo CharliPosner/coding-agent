@@ -91,7 +91,11 @@ async fn test_multiple_agents_concurrent() {
 
     // After wait_all(), all agents should be removed
     let statuses = manager.get_all_statuses();
-    assert_eq!(statuses.len(), 0, "All agents should be removed after wait_all");
+    assert_eq!(
+        statuses.len(),
+        0,
+        "All agents should be removed after wait_all"
+    );
 }
 
 /// Test agent failure handling.
@@ -100,14 +104,10 @@ async fn test_agent_failure() {
     let manager = Arc::new(AgentManager::new());
 
     // Spawn an agent that will fail
-    let agent_id = manager.spawn(
-        "failing-agent".to_string(),
-        "Will fail".to_string(),
-        || {
-            std::thread::sleep(Duration::from_millis(50));
-            Err("Intentional failure".to_string())
-        },
-    );
+    let agent_id = manager.spawn("failing-agent".to_string(), "Will fail".to_string(), || {
+        std::thread::sleep(Duration::from_millis(50));
+        Err("Intentional failure".to_string())
+    });
 
     // Wait for agent and expect failure
     let result = manager.wait(agent_id).await;
@@ -116,7 +116,11 @@ async fn test_agent_failure() {
 
     // Agent should be removed after wait
     let statuses = manager.get_all_statuses();
-    assert_eq!(statuses.len(), 0, "Failed agent should be removed after wait");
+    assert_eq!(
+        statuses.len(),
+        0,
+        "Failed agent should be removed after wait"
+    );
 }
 
 /// Test agent progress reporting.
@@ -186,25 +190,44 @@ async fn test_agent_cancellation() {
 
     // Verify agent is in system before cancelling
     let statuses_before = manager.get_all_statuses();
-    assert_eq!(statuses_before.len(), 1, "Should have 1 agent before cancel");
+    assert_eq!(
+        statuses_before.len(),
+        1,
+        "Should have 1 agent before cancel"
+    );
 
     // Cancel the agent
     let cancel_result = manager.cancel(agent_id).await;
-    assert!(cancel_result.is_ok(), "Cancel should succeed: {:?}", cancel_result);
+    assert!(
+        cancel_result.is_ok(),
+        "Cancel should succeed: {:?}",
+        cancel_result
+    );
 
     // Give cancel signal time to process in the background task
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Wait for the cancelled agent - it should return the cancellation error
     let result = manager.wait(agent_id).await;
-    assert!(result.is_err(), "Cancelled agent should return error, got: {:?}", result);
+    assert!(
+        result.is_err(),
+        "Cancelled agent should return error, got: {:?}",
+        result
+    );
     let error_msg = result.unwrap_err();
-    assert!(error_msg.contains("cancelled") || error_msg.contains("Agent"),
-        "Error should mention cancellation: {}", error_msg);
+    assert!(
+        error_msg.contains("cancelled") || error_msg.contains("Agent"),
+        "Error should mention cancellation: {}",
+        error_msg
+    );
 
     // Agent should be removed after wait
     let statuses = manager.get_all_statuses();
-    assert_eq!(statuses.len(), 0, "Cancelled agent should be removed after wait");
+    assert_eq!(
+        statuses.len(),
+        0,
+        "Cancelled agent should be removed after wait"
+    );
 }
 
 /// Test waiting for an agent to complete.
@@ -237,10 +260,7 @@ async fn test_agent_wait_timeout() {
     });
 
     // Wait with short timeout using tokio timeout
-    let result = tokio::time::timeout(
-        Duration::from_millis(100),
-        manager.wait(agent_id)
-    ).await;
+    let result = tokio::time::timeout(Duration::from_millis(100), manager.wait(agent_id)).await;
 
     assert!(result.is_err(), "Wait should timeout");
 }
@@ -271,7 +291,11 @@ async fn test_async_agent_spawn() {
 
     // After wait(), agent is removed
     let statuses = manager.get_all_statuses();
-    assert_eq!(statuses.len(), 0, "Async agent should be removed after completion");
+    assert_eq!(
+        statuses.len(),
+        0,
+        "Async agent should be removed after completion"
+    );
 }
 
 /// Test cleanup of completed agents.
@@ -341,7 +365,11 @@ async fn test_agent_state_transitions() {
 
     // After wait(), agent is removed from manager
     let statuses = manager.get_all_statuses();
-    assert_eq!(statuses.len(), 0, "Agent should be removed after completion");
+    assert_eq!(
+        statuses.len(),
+        0,
+        "Agent should be removed after completion"
+    );
 }
 
 /// Test getting status of specific agent.
@@ -350,14 +378,10 @@ async fn test_get_agent_status() {
     let manager = Arc::new(AgentManager::new());
 
     // Spawn an agent
-    let agent_id = manager.spawn(
-        "status-query".to_string(),
-        "Query test".to_string(),
-        || {
-            std::thread::sleep(Duration::from_millis(100));
-            Ok("Query done".to_string())
-        },
-    );
+    let agent_id = manager.spawn("status-query".to_string(), "Query test".to_string(), || {
+        std::thread::sleep(Duration::from_millis(100));
+        Ok("Query done".to_string())
+    });
 
     // Get status of this specific agent
     let status = manager.get_status(agent_id);

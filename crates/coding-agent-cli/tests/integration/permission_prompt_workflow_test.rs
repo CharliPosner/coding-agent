@@ -31,8 +31,8 @@ fn test_end_to_end_permission_prompt_workflow() {
     config.save_to(&config_path).expect("Should save config");
 
     // Step 2: Create permission checker from config
-    let trusted = TrustedPaths::new(&config.permissions.trusted_paths)
-        .expect("Should create trusted paths");
+    let trusted =
+        TrustedPaths::new(&config.permissions.trusted_paths).expect("Should create trusted paths");
     let mut checker = PermissionChecker::new(trusted, config.permissions.auto_read);
 
     // Step 3: Check permission for write (should need prompt)
@@ -45,7 +45,11 @@ fn test_end_to_end_permission_prompt_workflow() {
     // Step 4: Simulate user responding "Always"
     // In real code, this would come from PermissionPrompt::prompt()
     // For testing, we simulate the decision
-    checker.record_decision(&test_file, OperationType::Write, PermissionDecision::Allowed);
+    checker.record_decision(
+        &test_file,
+        OperationType::Write,
+        PermissionDecision::Allowed,
+    );
 
     // Step 5: Add parent directory to trusted paths in config
     let parent_dir = test_file.parent().expect("Should have parent");
@@ -107,8 +111,8 @@ fn test_permission_prompt_yes_does_not_update_config() {
     let initial_trusted_count = config.permissions.trusted_paths.len();
 
     // Create checker
-    let trusted = TrustedPaths::new(&config.permissions.trusted_paths)
-        .expect("Should create trusted paths");
+    let trusted =
+        TrustedPaths::new(&config.permissions.trusted_paths).expect("Should create trusted paths");
     let mut checker = PermissionChecker::new(trusted, config.permissions.auto_read);
 
     // Check needs prompt
@@ -118,7 +122,11 @@ fn test_permission_prompt_yes_does_not_update_config() {
     );
 
     // Simulate "Yes" (allow once, not "Always")
-    checker.record_decision(&test_file, OperationType::Write, PermissionDecision::Allowed);
+    checker.record_decision(
+        &test_file,
+        OperationType::Write,
+        PermissionDecision::Allowed,
+    );
 
     // Check is now allowed in session
     assert_eq!(
@@ -164,8 +172,8 @@ fn test_permission_prompt_never_blocks_permanently_in_session() {
     config.save_to(&config_path).expect("Should save config");
 
     // Create checker
-    let trusted = TrustedPaths::new(&config.permissions.trusted_paths)
-        .expect("Should create trusted paths");
+    let trusted =
+        TrustedPaths::new(&config.permissions.trusted_paths).expect("Should create trusted paths");
     let mut checker = PermissionChecker::new(trusted, config.permissions.auto_read);
 
     // First check needs prompt
@@ -219,24 +227,15 @@ fn test_multiple_always_responses_accumulate() {
 
     // Add three different directories as trusted
     config
-        .add_trusted_path_to(
-            file1.parent().unwrap().to_str().unwrap(),
-            &config_path,
-        )
+        .add_trusted_path_to(file1.parent().unwrap().to_str().unwrap(), &config_path)
         .expect("Should add path 1");
 
     config
-        .add_trusted_path_to(
-            file2.parent().unwrap().to_str().unwrap(),
-            &config_path,
-        )
+        .add_trusted_path_to(file2.parent().unwrap().to_str().unwrap(), &config_path)
         .expect("Should add path 2");
 
     config
-        .add_trusted_path_to(
-            file3.parent().unwrap().to_str().unwrap(),
-            &config_path,
-        )
+        .add_trusted_path_to(file3.parent().unwrap().to_str().unwrap(), &config_path)
         .expect("Should add path 3");
 
     // Verify all three are in config
@@ -288,8 +287,8 @@ fn test_subdirectories_of_trusted_paths_are_trusted() {
         .expect("Should add trusted path");
 
     // Create checker
-    let trusted = TrustedPaths::new(&config.permissions.trusted_paths)
-        .expect("Should create trusted paths");
+    let trusted =
+        TrustedPaths::new(&config.permissions.trusted_paths).expect("Should create trusted paths");
     let checker = PermissionChecker::new(trusted, config.permissions.auto_read);
 
     // Nested file should be allowed (subdirectory of trusted path)
@@ -323,8 +322,8 @@ fn test_sibling_directories_not_automatically_trusted() {
         .expect("Should add trusted path");
 
     // Create checker
-    let trusted = TrustedPaths::new(&config.permissions.trusted_paths)
-        .expect("Should create trusted paths");
+    let trusted =
+        TrustedPaths::new(&config.permissions.trusted_paths).expect("Should create trusted paths");
     let checker = PermissionChecker::new(trusted, config.permissions.auto_read);
 
     // Sibling directory should NOT be trusted
@@ -349,11 +348,17 @@ fn test_config_update_survives_multiple_reload_cycles() {
 
     // Cycle 2: Reload and verify
     let config2 = Config::load_from(&config_path).expect("Should load");
-    assert!(config2.permissions.trusted_paths.contains(&test_path.to_string()));
+    assert!(config2
+        .permissions
+        .trusted_paths
+        .contains(&test_path.to_string()));
 
     // Cycle 3: Reload again and verify
     let config3 = Config::load_from(&config_path).expect("Should load");
-    assert!(config3.permissions.trusted_paths.contains(&test_path.to_string()));
+    assert!(config3
+        .permissions
+        .trusted_paths
+        .contains(&test_path.to_string()));
 
     // Cycle 4: Reload, add another path, save
     let mut config4 = Config::load_from(&config_path).expect("Should load");
@@ -368,7 +373,10 @@ fn test_config_update_survives_multiple_reload_cycles() {
         2,
         "Should have both paths"
     );
-    assert!(config5.permissions.trusted_paths.contains(&test_path.to_string()));
+    assert!(config5
+        .permissions
+        .trusted_paths
+        .contains(&test_path.to_string()));
     assert!(config5
         .permissions
         .trusted_paths
@@ -412,8 +420,8 @@ fn test_operation_type_specificity_with_config() {
         .expect("Should add trusted path");
 
     // Create checker
-    let trusted = TrustedPaths::new(&config.permissions.trusted_paths)
-        .expect("Should create trusted paths");
+    let trusted =
+        TrustedPaths::new(&config.permissions.trusted_paths).expect("Should create trusted paths");
     let checker = PermissionChecker::new(trusted, config.permissions.auto_read);
 
     // All operation types should be allowed for trusted paths
@@ -442,7 +450,10 @@ fn test_read_operations_auto_allowed_when_auto_read_true() {
 
     // Create config with auto_read = true (default)
     let config = Config::default();
-    assert!(config.permissions.auto_read, "auto_read should be true by default");
+    assert!(
+        config.permissions.auto_read,
+        "auto_read should be true by default"
+    );
 
     // Create checker with no trusted paths
     let trusted = TrustedPaths::new(&[]).expect("Should create trusted paths");
@@ -512,8 +523,8 @@ fn test_empty_trusted_paths_list_handled_correctly() {
     let loaded = Config::load_from(&config_path).expect("Should load");
 
     // Create checker
-    let trusted = TrustedPaths::new(&loaded.permissions.trusted_paths)
-        .expect("Should create trusted paths");
+    let trusted =
+        TrustedPaths::new(&loaded.permissions.trusted_paths).expect("Should create trusted paths");
     let checker = PermissionChecker::new(trusted, loaded.permissions.auto_read);
 
     // Should need prompt for write
