@@ -7,11 +7,17 @@
 //! - Lists and blockquotes
 //! - Tables
 
+use syntect::easy::HighlightLines;
+use syntect::highlighting::{Style, ThemeSet};
+use syntect::parsing::SyntaxSet;
+use syntect::util::LinesWithEndings;
 use termimad::{crossterm::style::Color, MadSkin};
 
 /// Markdown renderer for terminal output
 pub struct MarkdownRenderer {
     skin: MadSkin,
+    syntax_set: SyntaxSet,
+    theme_set: ThemeSet,
 }
 
 impl Default for MarkdownRenderer {
@@ -49,7 +55,54 @@ impl MarkdownRenderer {
         // Links - blue underlined (termimad handles this)
         skin.paragraph.set_fg(Color::Reset);
 
-        Self { skin }
+        // Load syntax definitions
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let theme_set = ThemeSet::load_defaults();
+
+        Self {
+            skin,
+            syntax_set,
+            theme_set,
+        }
+    }
+
+    /// Highlight code with syntax-aware coloring
+    fn highlight_code(&self, code: &str, language: &str) -> String {
+        // Try to find syntax definition for the language
+        let syntax = self
+            .syntax_set
+            .find_syntax_by_token(language)
+            .or_else(|| self.syntax_set.find_syntax_by_extension(language));
+
+        // If no syntax found, return plain green text (fallback)
+        let Some(syntax) = syntax else {
+            return format!("\x1b[32m{}\x1b[0m", code);
+        };
+
+        // Use a dark theme for terminal
+        let theme = &self.theme_set.themes["base16-ocean.dark"];
+        let mut highlighter = HighlightLines::new(syntax, theme);
+
+        let mut highlighted = String::new();
+        for line in LinesWithEndings::from(code) {
+            let ranges = highlighter
+                .highlight_line(line, &self.syntax_set)
+                .unwrap_or_default();
+
+            for (style, text) in ranges {
+                highlighted.push_str(&self.style_to_ansi(style));
+                highlighted.push_str(text);
+            }
+            highlighted.push_str("\x1b[0m"); // Reset after each line
+        }
+
+        highlighted
+    }
+
+    /// Convert syntect Style to ANSI escape codes
+    fn style_to_ansi(&self, style: Style) -> String {
+        let fg = style.foreground;
+        format!("\x1b[38;2;{};{};{}m", fg.r, fg.g, fg.b)
     }
 
     /// Render markdown text for terminal display
@@ -57,8 +110,58 @@ impl MarkdownRenderer {
     /// Returns the formatted string ready for printing.
     /// The output includes ANSI escape codes for colors and formatting.
     pub fn render(&self, markdown: &str) -> String {
+        // Pre-process to extract and highlight code blocks
+        let processed = self.preprocess_code_blocks(markdown);
         // termimad's text() method renders to a string with ANSI codes
-        self.skin.text(markdown, None).to_string()
+        self.skin.text(&processed, None).to_string()
+    }
+
+    /// Pre-process markdown to highlight code blocks
+    fn preprocess_code_blocks(&self, markdown: &str) -> String {
+        let mut result = String::new();
+        let mut in_code_block = false;
+        let mut code_buffer = String::new();
+        let mut language = String::new();
+        let lines: Vec<&str> = markdown.lines().collect();
+
+        for (i, line) in lines.iter().enumerate() {
+            if let Some(lang) = line.strip_prefix("```") {
+                if in_code_block {
+                    // End of code block - highlight and append
+                    let highlighted = self.highlight_code(&code_buffer, &language);
+                    result.push_str("```\n");
+                    result.push_str(&highlighted);
+                    if i < lines.len() - 1 {
+                        result.push_str("\n```\n");
+                    } else {
+                        result.push_str("```\n");
+                    }
+                    code_buffer.clear();
+                    language.clear();
+                    in_code_block = false;
+                } else {
+                    // Start of code block
+                    language = lang.trim().to_string();
+                    in_code_block = true;
+                }
+            } else if in_code_block {
+                code_buffer.push_str(line);
+                code_buffer.push('\n');
+            } else {
+                result.push_str(line);
+                result.push('\n');
+            }
+        }
+
+        // Handle unclosed code block
+        if in_code_block {
+            let highlighted = self.highlight_code(&code_buffer, &language);
+            result.push_str("```\n");
+            result.push_str(&highlighted);
+            result.push_str("```\n");
+        }
+
+        result
     }
 
     /// Render markdown and print directly to stdout
@@ -110,7 +213,9 @@ mod tests {
     fn test_render_code_block() {
         let renderer = MarkdownRenderer::new();
         let output = renderer.render("```rust\nfn main() {}\n```");
-        assert!(output.contains("fn main()"));
+        // The output contains ANSI codes, so check for individual parts
+        assert!(output.contains("fn"));
+        assert!(output.contains("main"));
     }
 
     #[test]
@@ -134,5 +239,73 @@ mod tests {
         let output = renderer.render_inline("**bold** and *italic*");
         assert!(output.contains("bold"));
         assert!(output.contains("italic"));
+    }
+
+    #[test]
+    fn test_code_block_rust_keywords() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "```rust\nfn main() {\n    let x = 5;\n}\n```";
+        let output = renderer.render(markdown);
+
+        // Check that keywords are present in output
+        assert!(output.contains("fn"));
+        assert!(output.contains("let"));
+
+        // Check for ANSI color codes (syntax highlighting applied)
+        assert!(output.contains("\x1b[38;2;"));
+    }
+
+    #[test]
+    fn test_code_block_rust_strings() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = r#"```rust
+let s = "hello";
+```"#;
+        let output = renderer.render(markdown);
+
+        // Check that string literal is present
+        assert!(output.contains("hello"));
+
+        // Check for ANSI color codes
+        assert!(output.contains("\x1b[38;2;"));
+    }
+
+    #[test]
+    fn test_code_block_rust_comments() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "```rust\n// This is a comment\nfn main() {}\n```";
+        let output = renderer.render(markdown);
+
+        // Check that comment is present
+        assert!(output.contains("This is a comment"));
+
+        // Check for ANSI color codes
+        assert!(output.contains("\x1b[38;2;"));
+    }
+
+    #[test]
+    fn test_code_block_unknown_lang() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "```unknownlang\nsome code here\n```";
+        let output = renderer.render(markdown);
+
+        // Should contain the code
+        assert!(output.contains("some code here"));
+
+        // Should fallback to green (ANSI code 32)
+        assert!(output.contains("\x1b[32m"));
+    }
+
+    #[test]
+    fn test_code_block_no_lang() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "```\nplain code\n```";
+        let output = renderer.render(markdown);
+
+        // Should contain the code
+        assert!(output.contains("plain code"));
+
+        // Should fallback to green since no language specified
+        assert!(output.contains("\x1b[32m"));
     }
 }
