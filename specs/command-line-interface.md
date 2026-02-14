@@ -2182,10 +2182,10 @@ if detector.check() && !triggered {
    - [x] Ask which group to commit
 
 2. **Smart Commit Message Generation**
-   - [ ] Analyze all files in group via `suggest_commit_splits()`
-   - [ ] Generate purpose-focused message from changes
-   - [ ] Show commit message preview with edit option
-   - [ ] Support multi-commit workflow for logical separation
+   - [x] Analyze all files in group via `suggest_commit_splits()`
+   - [x] Generate purpose-focused message from changes
+   - [x] Show commit message preview with edit option
+   - [x] Support multi-commit workflow for logical separation
 
 **Implementation approach:**
 
@@ -2231,10 +2231,10 @@ if groups.len() > 1 {
 **Deliverables:**
 
 1. **/document Command Enhancement**
-   - [ ] Use `ObsidianVault::search()` to find related notes
-   - [ ] Show search results with relevance scores
-   - [ ] Support creating new notes in suggested locations
-   - [ ] Support updating existing notes with diffs
+   - [x] Use `ObsidianVault::search()` to find related notes
+   - [x] Show search results with relevance scores
+   - [x] Support creating new notes in suggested locations
+   - [x] Support updating existing notes with diffs
 
 2. **Note Template System**
    - [ ] Generate structured note templates by topic

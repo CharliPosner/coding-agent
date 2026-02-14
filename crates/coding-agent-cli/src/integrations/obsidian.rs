@@ -277,6 +277,62 @@ fn sanitize_filename(topic: &str) -> String {
         .to_string()
 }
 
+/// Generate a diff preview showing changes between old and new content
+pub fn generate_diff(old_content: &str, new_content: &str) -> String {
+    let mut output = String::new();
+
+    let old_lines: Vec<&str> = old_content.lines().collect();
+    let new_lines: Vec<&str> = new_content.lines().collect();
+
+    // Simple line-by-line diff
+    let max_lines = old_lines.len().max(new_lines.len());
+    let mut added = 0;
+    let mut removed = 0;
+    let mut unchanged = 0;
+
+    for i in 0..max_lines {
+        let old_line = old_lines.get(i);
+        let new_line = new_lines.get(i);
+
+        match (old_line, new_line) {
+            (Some(old), Some(new)) if old == new => {
+                // Line unchanged
+                output.push_str(&format!("  {}\n", old));
+                unchanged += 1;
+            }
+            (Some(old), Some(new)) => {
+                // Line modified
+                output.push_str(&format!("- {}\n", old));
+                output.push_str(&format!("+ {}\n", new));
+                removed += 1;
+                added += 1;
+            }
+            (Some(old), None) => {
+                // Line removed
+                output.push_str(&format!("- {}\n", old));
+                removed += 1;
+            }
+            (None, Some(new)) => {
+                // Line added
+                output.push_str(&format!("+ {}\n", new));
+                added += 1;
+            }
+            (None, None) => {
+                // Should never happen
+                break;
+            }
+        }
+    }
+
+    // Add summary
+    output.push_str(&format!(
+        "\n{} line(s) unchanged, {} insertion(s), {} deletion(s)\n",
+        unchanged, added, removed
+    ));
+
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,5 +518,102 @@ mod tests {
         let loaded = Note::load(&note_path).expect("Failed to load note");
         assert_eq!(loaded.title, "test");
         assert_eq!(loaded.content, "# Test\n\nContent");
+    }
+
+    #[test]
+    fn test_generate_diff_identical() {
+        let old = "Line 1\nLine 2\nLine 3";
+        let new = "Line 1\nLine 2\nLine 3";
+        let diff = super::generate_diff(old, new);
+
+        // Should show all lines as unchanged
+        assert!(diff.contains("  Line 1"));
+        assert!(diff.contains("  Line 2"));
+        assert!(diff.contains("  Line 3"));
+        assert!(diff.contains("3 line(s) unchanged"));
+        assert!(diff.contains("0 insertion(s)"));
+        assert!(diff.contains("0 deletion(s)"));
+    }
+
+    #[test]
+    fn test_generate_diff_added_lines() {
+        let old = "Line 1\nLine 2";
+        let new = "Line 1\nLine 2\nLine 3\nLine 4";
+        let diff = super::generate_diff(old, new);
+
+        // Should show additions
+        assert!(diff.contains("+ Line 3"));
+        assert!(diff.contains("+ Line 4"));
+        assert!(diff.contains("2 line(s) unchanged"));
+        assert!(diff.contains("2 insertion(s)"));
+        assert!(diff.contains("0 deletion(s)"));
+    }
+
+    #[test]
+    fn test_generate_diff_removed_lines() {
+        let old = "Line 1\nLine 2\nLine 3\nLine 4";
+        let new = "Line 1\nLine 2";
+        let diff = super::generate_diff(old, new);
+
+        // Should show deletions
+        assert!(diff.contains("- Line 3"));
+        assert!(diff.contains("- Line 4"));
+        assert!(diff.contains("2 line(s) unchanged"));
+        assert!(diff.contains("0 insertion(s)"));
+        assert!(diff.contains("2 deletion(s)"));
+    }
+
+    #[test]
+    fn test_generate_diff_modified_lines() {
+        let old = "Line 1\nLine 2 old\nLine 3";
+        let new = "Line 1\nLine 2 new\nLine 3";
+        let diff = super::generate_diff(old, new);
+
+        // Should show modification as remove + add
+        assert!(diff.contains("- Line 2 old"));
+        assert!(diff.contains("+ Line 2 new"));
+        assert!(diff.contains("2 line(s) unchanged"));
+        assert!(diff.contains("1 insertion(s)"));
+        assert!(diff.contains("1 deletion(s)"));
+    }
+
+    #[test]
+    fn test_generate_diff_empty() {
+        let old = "";
+        let new = "";
+        let diff = super::generate_diff(old, new);
+
+        // Should show no changes
+        assert!(diff.contains("0 line(s) unchanged"));
+        assert!(diff.contains("0 insertion(s)"));
+        assert!(diff.contains("0 deletion(s)"));
+    }
+
+    #[test]
+    fn test_generate_diff_empty_to_content() {
+        let old = "";
+        let new = "New line 1\nNew line 2";
+        let diff = super::generate_diff(old, new);
+
+        // Should show all additions
+        assert!(diff.contains("+ New line 1"));
+        assert!(diff.contains("+ New line 2"));
+        assert!(diff.contains("0 line(s) unchanged"));
+        assert!(diff.contains("2 insertion(s)"));
+        assert!(diff.contains("0 deletion(s)"));
+    }
+
+    #[test]
+    fn test_generate_diff_content_to_empty() {
+        let old = "Old line 1\nOld line 2";
+        let new = "";
+        let diff = super::generate_diff(old, new);
+
+        // Should show all deletions
+        assert!(diff.contains("- Old line 1"));
+        assert!(diff.contains("- Old line 2"));
+        assert!(diff.contains("0 line(s) unchanged"));
+        assert!(diff.contains("0 insertion(s)"));
+        assert!(diff.contains("2 deletion(s)"));
     }
 }
