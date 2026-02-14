@@ -139,25 +139,36 @@ setup_worktree() {
     mkdir -p "$REPO_ROOT/$WORKTREE_DIR"
 
     if [[ -d "$WORKTREE_PATH" ]]; then
-        print_info "Using existing worktree: $WORKTREE_PATH"
+        print_info "Using existing worktree: $WORKTREE_PATH" >&2
         echo "$WORKTREE_PATH"
         return
     fi
 
-    print_info "Creating worktree for $SPEC_NAME..."
+    print_info "Creating worktree for $SPEC_NAME..." >&2
 
     # Check if branch exists
     if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
         # Branch exists, create worktree for it
-        git worktree add "$WORKTREE_PATH" "$BRANCH_NAME"
+        git worktree add "$WORKTREE_PATH" "$BRANCH_NAME" >&2
     else
         # Create new branch from main/master
         local base_branch
-        base_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
-        git worktree add "$WORKTREE_PATH" -b "$BRANCH_NAME" "$base_branch"
+        base_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+        if [[ -z "$base_branch" ]]; then
+            # Fallback: try to detect main or master
+            if git show-ref --verify --quiet refs/heads/main; then
+                base_branch="main"
+            elif git show-ref --verify --quiet refs/heads/master; then
+                base_branch="master"
+            else
+                # Use current branch as fallback
+                base_branch=$(git rev-parse --abbrev-ref HEAD)
+            fi
+        fi
+        git worktree add "$WORKTREE_PATH" -b "$BRANCH_NAME" "$base_branch" >&2
     fi
 
-    print_success "Worktree created: $WORKTREE_PATH"
+    print_success "Worktree created: $WORKTREE_PATH" >&2
     echo "$WORKTREE_PATH"
 }
 
@@ -227,26 +238,38 @@ generate_prompt() {
     cat <<EOF
 Read the specification at: $spec_path
 
-WORKFLOW (complete ONE task per run):
+DELIVERABLE WORKFLOW (complete ONE deliverable per LLM context):
+
+UNDERSTANDING DELIVERABLES:
+- A "deliverable" is a major section in the spec (e.g., "## Bug 1", "## Feature: Auth")
+- Each deliverable contains multiple checklist items (checkboxes)
+- ONE deliverable = ONE iteration of this loop
+- Complete ALL checkboxes within a deliverable before marking it done
+- If you see a deliverable with some boxes already checked [x] and others unchecked [ ], you are RESUMING work from a previous agent - pick up where they left off
+
+WORKFLOW:
 
 1. ORIENT
    - Study the spec to understand the project structure
    - Check for CLAUDE.md or AGENTS.md for build/test commands
    - Identify the source code location
 
-2. FIND NEXT TASK
-   - Look for unchecked items: [ ] or - [ ] or similar patterns
-   - Find the FIRST unchecked deliverable/task
-   - If no unchecked items remain, output 'ALL_TASKS_COMPLETE' and exit
+2. FIND NEXT DELIVERABLE
+   - Scan the spec for deliverable sections (## headers)
+   - Find the FIRST deliverable with ANY unchecked [ ] items
+   - If a deliverable has SOME items checked [x] and SOME unchecked [ ], resume that one
+   - If ALL deliverables are complete (no [ ] items remain), output 'ALL_TASKS_COMPLETE' and exit
 
 3. INVESTIGATE
    - Search the codebase - don't assume something isn't implemented
    - Understand existing patterns before adding new code
+   - Read any files mentioned in the deliverable description
 
 4. IMPLEMENT
-   - Write ACTUAL CODE, not just plans
+   - Complete ALL remaining checklist items for this deliverable
+   - Write ACTUAL CODE, not just plans or placeholders
    - Follow existing code style and patterns
-   - Keep changes focused on the single task
+   - Keep changes focused on the current deliverable
 
 5. VALIDATE
    - Run tests (look for test commands in CLAUDE.md, Makefile, or package.json)
@@ -255,25 +278,27 @@ WORKFLOW (complete ONE task per run):
    - Fix any issues before proceeding
 
 6. MARK COMPLETE
-   - Update the spec file: change [ ] to [x] for the completed item
+   - Update the spec file: change [ ] to [x] for ALL items in this deliverable
    - Only mark complete AFTER code is written AND tests pass
+   - Do NOT mark items in other deliverables
 
 7. COMMIT & PUSH
    - Stage relevant files (avoid staging unrelated changes)
-   - Commit with descriptive message referencing the task
+   - Commit with descriptive message referencing the deliverable
    - Push to remote: git push origin $BRANCH_NAME
 
 8. SUMMARIZE & EXIT
    - Output a single line: SUMMARY: <brief description of what you did>
    - Then output 'DELIVERABLE_COMPLETE'
-   - Exit immediately (the loop will restart for the next task)
+   - Exit immediately (the loop will restart for the next deliverable)
 
 CRITICAL RULES:
-- ONE task per run, then EXIT
+- ONE deliverable per run (but ALL checkboxes within that deliverable)
 - Write REAL CODE, not placeholders
 - Do NOT mark [x] until code is written AND validated
 - If tests fail, fix them before marking complete
 - If stuck, output 'BLOCKED: <reason>' and exit
+- If resuming a partial deliverable, acknowledge what's already done and continue
 EOF
 }
 

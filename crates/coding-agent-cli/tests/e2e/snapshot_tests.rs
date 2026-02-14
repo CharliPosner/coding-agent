@@ -1,7 +1,7 @@
-//! Snapshot tests for terminal output
+//! Essential E2E snapshot tests
 //!
-//! These tests capture the actual visual output of the CLI including ANSI colors
-//! and formatting. They use `insta` for snapshot comparison.
+//! Focused on true end-to-end CLI behavior rather than duplicating 
+//! UI component tests that are covered in ui_visual_regression_tests.rs
 
 use crate::e2e::harness::CliTestSession;
 use crate::e2e::mock_claude::MockClaudeServer;
@@ -24,15 +24,14 @@ fn normalize_whitespace(s: &str) -> String {
         .to_string()
 }
 
-/// Helper to capture terminal output with ANSI codes preserved
-fn capture_with_ansi(output: &str) -> String {
-    normalize_whitespace(output)
-}
-
 /// Helper to capture terminal output with ANSI codes stripped
 fn capture_without_ansi(output: &str) -> String {
     normalize_whitespace(&strip_ansi(output))
 }
+
+// ============================================================================
+// TRUE E2E TESTS - CLI Interaction & Startup Behavior
+// ============================================================================
 
 #[test]
 #[ignore] // Requires building the binary first
@@ -42,11 +41,6 @@ fn test_startup_screen_snapshot() {
     // Wait for startup screen to render
     std::thread::sleep(Duration::from_millis(500));
 
-    // The startup screen should be already displayed
-    // For now, we'll capture what we can see through the PTY
-    // Note: This is a simplified version; real implementation would need
-    // to capture the full terminal buffer
-
     let result = session.expect_startup_screen();
     assert!(result.is_ok(), "Failed to see startup screen");
 
@@ -55,7 +49,7 @@ fn test_startup_screen_snapshot() {
 }
 
 #[test]
-#[ignore]
+#[ignore] 
 fn test_help_command_snapshot() {
     let mut session = CliTestSession::spawn().expect("Failed to spawn");
     session
@@ -89,170 +83,28 @@ fn test_unknown_command_snapshot() {
     assert_snapshot!("unknown_command_error", clean_output);
 }
 
-#[test]
-fn test_context_bar_render_snapshot_25_percent() {
-    use coding_agent_cli::ui::context_bar::ContextBar;
-    use coding_agent_cli::ui::theme::{Theme, ThemeStyle};
-
-    // Use monochrome theme for consistent snapshots
-    let theme = Theme::new(ThemeStyle::Monochrome);
-    let mut bar = ContextBar::with_theme(200_000, theme);
-    bar.set_tokens(50_000); // 25%
-
-    let output = bar.render();
-    let clean_output = strip_ansi(&output);
-
-    assert_snapshot!("context_bar_25_percent", clean_output);
-}
-
-#[test]
-fn test_context_bar_render_snapshot_60_percent() {
-    use coding_agent_cli::ui::context_bar::ContextBar;
-    use coding_agent_cli::ui::theme::{Theme, ThemeStyle};
-
-    let theme = Theme::new(ThemeStyle::Monochrome);
-    let mut bar = ContextBar::with_theme(200_000, theme);
-    bar.set_tokens(120_000); // 60%
-
-    let output = bar.render();
-    let clean_output = strip_ansi(&output);
-
-    assert_snapshot!("context_bar_60_percent", clean_output);
-}
-
-#[test]
-fn test_context_bar_render_snapshot_85_percent() {
-    use coding_agent_cli::ui::context_bar::ContextBar;
-    use coding_agent_cli::ui::theme::{Theme, ThemeStyle};
-
-    let theme = Theme::new(ThemeStyle::Monochrome);
-    let mut bar = ContextBar::with_theme(200_000, theme);
-    bar.set_tokens(170_000); // 85%
-
-    let output = bar.render();
-    let clean_output = strip_ansi(&output);
-
-    assert_snapshot!("context_bar_85_percent", clean_output);
-}
-
-#[test]
-fn test_context_bar_render_snapshot_100_percent() {
-    use coding_agent_cli::ui::context_bar::ContextBar;
-    use coding_agent_cli::ui::theme::{Theme, ThemeStyle};
-
-    let theme = Theme::new(ThemeStyle::Monochrome);
-    let mut bar = ContextBar::with_theme(200_000, theme);
-    bar.set_tokens(200_000); // 100%
-
-    let output = bar.render();
-    let clean_output = strip_ansi(&output);
-
-    assert_snapshot!("context_bar_100_percent", clean_output);
-}
-
-#[test]
-fn test_context_bar_compact_snapshot() {
-    use coding_agent_cli::ui::context_bar::ContextBar;
-    use coding_agent_cli::ui::theme::{Theme, ThemeStyle};
-
-    let theme = Theme::new(ThemeStyle::Monochrome);
-    let mut bar = ContextBar::with_theme(200_000, theme);
-    bar.set_tokens(50_000); // 25%
-
-    let output = bar.render_compact();
-    let clean_output = strip_ansi(&output);
-
-    assert_snapshot!("context_bar_compact", clean_output);
-}
-
 #[tokio::test]
 #[ignore] // Requires mock API server
-async fn test_tool_execution_display_snapshot() {
-    // This would test the "● Reading..." and "✓ Read 150 lines" output
-    // Requires integration with mock API server
-
+async fn test_full_conversation_flow() {
+    // Test complete conversation: user input → API call → tool execution → response
     let _mock_server = MockClaudeServer::start().await;
 
-    // TODO: Implement when mock server is fully integrated
+    let mut session = CliTestSession::spawn().expect("Failed to spawn CLI");
+    session.select_new_session().expect("Failed to select session");
+
+    // Simulate user asking for file read
+    let output = session
+        .run_command("Please read the file fixtures/fizzbuzz.js")
+        .expect("Failed to run command");
+
+    let clean_output = capture_without_ansi(&output);
+    
+    // Should contain tool execution and file content
+    assert!(clean_output.contains("fizzbuzz") || clean_output.contains("function"));
+    assert_snapshot!("full_conversation_flow", clean_output);
 }
 
-#[test]
-fn test_error_message_formatting_snapshot() {
-    use coding_agent_cli::ui::output::StyledOutput;
-    use coding_agent_cli::ui::theme::{Theme, ThemeStyle};
-
-    let theme = Theme::new(ThemeStyle::Monochrome);
-    let output = StyledOutput::new(theme);
-
-    // We can't easily capture println! output, so we'll test the theme application directly
-    let error_msg = output.theme().apply(
-        coding_agent_cli::ui::theme::Color::Error,
-        "File not found: /path/to/file.rs",
-    );
-    let clean_output = strip_ansi(&error_msg);
-
-    assert_snapshot!("error_message_file_not_found", clean_output);
-}
-
-#[test]
-fn test_success_message_formatting_snapshot() {
-    use coding_agent_cli::ui::output::StyledOutput;
-    use coding_agent_cli::ui::theme::{Theme, ThemeStyle};
-
-    let theme = Theme::new(ThemeStyle::Monochrome);
-    let output = StyledOutput::new(theme);
-
-    let success_msg = output.theme().apply(
-        coding_agent_cli::ui::theme::Color::Success,
-        "File created successfully",
-    );
-    let clean_output = strip_ansi(&success_msg);
-
-    assert_snapshot!("success_message", clean_output);
-}
-
-#[test]
-fn test_warning_message_formatting_snapshot() {
-    use coding_agent_cli::ui::output::StyledOutput;
-    use coding_agent_cli::ui::theme::{Theme, ThemeStyle};
-
-    let theme = Theme::new(ThemeStyle::Monochrome);
-    let output = StyledOutput::new(theme);
-
-    let warning_msg = output.theme().apply(
-        coding_agent_cli::ui::theme::Color::Warning,
-        "This operation may be slow",
-    );
-    let clean_output = strip_ansi(&warning_msg);
-
-    assert_snapshot!("warning_message", clean_output);
-}
-
-/// Test that verifies color transitions at exact thresholds
-#[test]
-fn test_context_bar_color_transitions() {
-    use coding_agent_cli::ui::context_bar::ContextBar;
-    use coding_agent_cli::ui::theme::{Color, Theme, ThemeStyle};
-
-    let theme = Theme::new(ThemeStyle::Minimal);
-
-    // Test 59% - should be green
-    let mut bar = ContextBar::with_theme(100, theme.clone());
-    bar.set_tokens(59);
-    assert_eq!(bar.usage_color(), Color::ContextGreen);
-
-    // Test 60% - should be yellow
-    let mut bar = ContextBar::with_theme(100, theme.clone());
-    bar.set_tokens(60);
-    assert_eq!(bar.usage_color(), Color::ContextYellow);
-
-    // Test 84% - should be yellow
-    let mut bar = ContextBar::with_theme(100, theme.clone());
-    bar.set_tokens(84);
-    assert_eq!(bar.usage_color(), Color::ContextYellow);
-
-    // Test 85% - should be red
-    let mut bar = ContextBar::with_theme(100, theme);
-    bar.set_tokens(85);
-    assert_eq!(bar.usage_color(), Color::ContextRed);
-}
+// Note: Removed redundant tests that duplicate UI component testing:
+// - context_bar_render_snapshot_* (covered in ui_visual_regression_tests.rs)  
+// - error/success/warning_message_formatting_* (covered in ui_visual_regression_tests.rs)
+// - context_bar_color_transitions (covered in ui_visual_regression_tests.rs)
