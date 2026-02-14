@@ -92,6 +92,9 @@ pub async fn run_with_startup(verbose: bool, show_startup: bool) -> Result<(), S
                 cost_tracker: crate::tokens::CostTracker::with_default_model(),
                 agent_manager: None,
                 config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: std::sync::Arc::new(std::sync::Mutex::new(
+                    commands::CollapsedResults::default(),
+                )),
             };
             match config_cmd.execute(&[], &mut ctx) {
                 commands::CommandResult::Output(msg) => println!("{}", msg),

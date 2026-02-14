@@ -4,7 +4,7 @@
 //! focused on the purpose/intent of the changes rather than just describing
 //! what was changed.
 
-use super::{Command, CommandContext, CommandResult};
+use super::{CollapsedResults, Command, CommandContext, CommandResult};
 use crate::integrations::git::{
     FileGrouper, FileStatus, FileStatusKind, GitError, GitRepo, RepoStatus,
 };
@@ -190,12 +190,7 @@ fn execute_auto_commit_with_grouping(
 
     // If there's only one group, commit everything together
     if groups.len() == 1 {
-        return execute_auto_commit(
-            git_repo,
-            status,
-            stage_all,
-            custom_message,
-        );
+        return execute_auto_commit(git_repo, status, stage_all, custom_message);
     }
 
     // Multiple groups found - suggest splitting the commit
@@ -971,6 +966,7 @@ mod tests {
     use crate::tokens::CostTracker;
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
     use tempfile::TempDir;
 
     fn init_test_repo() -> (TempDir, Repository) {
@@ -1192,7 +1188,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             // Run the commit with -a flag to stage the new file
@@ -1285,7 +1282,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -1340,7 +1338,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             let result = cmd.execute(&[], &mut ctx);

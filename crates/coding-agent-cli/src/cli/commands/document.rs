@@ -1,6 +1,6 @@
 //! The /document command - Obsidian note management
 
-use super::{Command, CommandContext, CommandResult};
+use super::{CollapsedResults, Command, CommandContext, CommandResult};
 use crate::integrations::{NoteType, ObsidianError, ObsidianVault};
 use std::path::PathBuf;
 
@@ -222,6 +222,7 @@ mod tests {
     use crate::cli::commands::CommandRegistry;
     use crate::tokens::CostTracker;
     use std::fs;
+    use std::sync::{Arc, Mutex};
     use tempfile::TempDir;
 
     fn setup_test_vault() -> TempDir {
@@ -264,6 +265,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -290,6 +292,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&["test", "topic"], &mut ctx);
@@ -309,6 +312,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         // Just test that the flag is parsed (won't actually search without a valid vault)
@@ -331,6 +335,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&["test", "--new"], &mut ctx);

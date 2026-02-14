@@ -1,6 +1,6 @@
 //! The /spec command - create spec files and enter planning mode
 
-use super::{Command, CommandContext, CommandResult};
+use super::{CollapsedResults, Command, CommandContext, CommandResult};
 use crate::cli::Mode;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -235,7 +235,7 @@ mod tests {
     use std::env;
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     // Mutex to serialize tests that change directories
     static TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -274,6 +274,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         (ctx, original_dir)

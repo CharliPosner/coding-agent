@@ -15,6 +15,7 @@ mod exit;
 mod help;
 mod history;
 mod model;
+mod results;
 mod spec;
 mod status;
 mod undo;
@@ -22,6 +23,7 @@ mod undo;
 use crate::cli::Mode;
 use crate::tokens::CostTracker;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 /// Result of executing a command
 #[derive(Debug, Clone, PartialEq)]
@@ -57,6 +59,17 @@ pub trait Command: Send + Sync {
     fn execute(&self, args: &[&str], ctx: &mut CommandContext) -> CommandResult;
 }
 
+/// Stores the last collapsed tool results for later viewing
+#[derive(Debug, Clone, Default)]
+pub struct CollapsedResults {
+    /// The full content that was collapsed
+    pub content: Option<String>,
+    /// The tool that produced the results
+    pub tool_name: String,
+    /// Number of items that were collapsed
+    pub count: usize,
+}
+
 /// Context available to commands during execution
 pub struct CommandContext {
     /// Reference to the command registry for introspection
@@ -67,6 +80,8 @@ pub struct CommandContext {
     pub agent_manager: Option<std::sync::Arc<crate::agents::manager::AgentManager>>,
     /// Configuration settings
     pub config: std::sync::Arc<crate::config::Config>,
+    /// Last collapsed results (for /results command)
+    pub collapsed_results: Arc<Mutex<CollapsedResults>>,
 }
 
 /// Registry of available commands
@@ -103,6 +118,7 @@ impl CommandRegistry {
         registry.register(&spec::SpecCommand);
         registry.register(&status::StatusCommand);
         registry.register(&undo::UndoCommand);
+        registry.register(&results::ResultsCommand);
         registry
     }
 
@@ -153,6 +169,18 @@ pub fn parse_command(input: &str) -> Option<(&str, Vec<&str>)> {
     let args: Vec<&str> = parts.collect();
 
     Some((command_name, args))
+}
+
+/// Creates a CommandContext suitable for testing
+#[cfg(test)]
+pub fn create_test_context() -> CommandContext {
+    CommandContext {
+        registry: CommandRegistry::with_defaults(),
+        cost_tracker: crate::tokens::CostTracker::with_default_model(),
+        agent_manager: None,
+        config: Arc::new(crate::config::Config::default()),
+        collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
+    }
 }
 
 #[cfg(test)]

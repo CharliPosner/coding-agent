@@ -217,6 +217,7 @@ fn test_tool_result_file_content_truncated() {
         max_display_lines: 3,
         enable_highlighting: false,
         show_line_numbers: false,
+        collapse_threshold: 5,
     };
     let formatter = ToolResultFormatter::with_config(config);
 

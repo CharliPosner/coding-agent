@@ -28,5 +28,5 @@ pub use markdown::MarkdownRenderer;
 pub use status_bar::StatusBar;
 pub use theme::{Color, Theme};
 pub use thinking::ThinkingMessages;
-pub use tool_result::ToolResultFormatter;
+pub use tool_result::{FormattedResult, ToolResultFormatter};
 pub use tool_spinner::ToolExecutionSpinner;

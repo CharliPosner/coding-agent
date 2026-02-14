@@ -15,6 +15,8 @@ pub struct ToolResultConfig {
     pub enable_highlighting: bool,
     /// Whether to show line numbers for code
     pub show_line_numbers: bool,
+    /// Threshold for collapsing results (0 = never collapse)
+    pub collapse_threshold: usize,
 }
 
 impl Default for ToolResultConfig {
@@ -23,8 +25,22 @@ impl Default for ToolResultConfig {
             max_display_lines: 50,
             enable_highlighting: true,
             show_line_numbers: false,
+            collapse_threshold: 5,
         }
     }
+}
+
+/// Result of formatting a tool output, potentially collapsible
+#[derive(Debug, Clone)]
+pub struct FormattedResult {
+    /// The formatted output to display (may be collapsed summary)
+    pub display: String,
+    /// If collapsed, contains the full output for later viewing
+    pub collapsed_content: Option<String>,
+    /// Number of items that were collapsed (for display purposes)
+    pub collapsed_count: usize,
+    /// The tool name that produced this result
+    pub tool_name: String,
 }
 
 /// Tool result formatter with syntax highlighting
@@ -53,16 +69,46 @@ impl ToolResultFormatter {
         }
     }
 
-    /// Format a tool result for display
+    /// Format a tool result for display (simple string output, no collapsing)
     pub fn format_result(&self, tool_name: &str, output: &str) -> String {
+        self.format_result_collapsible(tool_name, output).display
+    }
+
+    /// Format a tool result with collapsible support
+    pub fn format_result_collapsible(&self, tool_name: &str, output: &str) -> FormattedResult {
         match tool_name {
-            "read_file" => self.format_file_content(output),
-            "write_file" => self.format_write_result(output),
-            "edit_file" => self.format_edit_result(output),
-            "list_files" => self.format_file_list(output),
-            "bash" => self.format_bash_output(output),
-            "code_search" => self.format_search_results(output),
-            _ => self.format_generic(output),
+            "read_file" => FormattedResult {
+                display: self.format_file_content(output),
+                collapsed_content: None,
+                collapsed_count: 0,
+                tool_name: tool_name.to_string(),
+            },
+            "write_file" => FormattedResult {
+                display: self.format_write_result(output),
+                collapsed_content: None,
+                collapsed_count: 0,
+                tool_name: tool_name.to_string(),
+            },
+            "edit_file" => FormattedResult {
+                display: self.format_edit_result(output),
+                collapsed_content: None,
+                collapsed_count: 0,
+                tool_name: tool_name.to_string(),
+            },
+            "list_files" => self.format_file_list_collapsible(output, tool_name),
+            "bash" => FormattedResult {
+                display: self.format_bash_output(output),
+                collapsed_content: None,
+                collapsed_count: 0,
+                tool_name: tool_name.to_string(),
+            },
+            "code_search" => self.format_search_results_collapsible(output, tool_name),
+            _ => FormattedResult {
+                display: self.format_generic(output),
+                collapsed_content: None,
+                collapsed_count: 0,
+                tool_name: tool_name.to_string(),
+            },
         }
     }
 
@@ -100,12 +146,19 @@ impl ToolResultFormatter {
         // Display content
         if self.config.enable_highlighting && language.is_some() {
             let highlighted = self.highlighter.highlight(content, language.unwrap());
-            for (idx, line) in highlighted.lines().take(self.config.max_display_lines).enumerate() {
+            for (idx, line) in highlighted
+                .lines()
+                .take(self.config.max_display_lines)
+                .enumerate()
+            {
                 if self.config.show_line_numbers {
                     let line_num = idx + 1;
                     result.push_str(&format!(
                         "  {} │ {}\r\n",
-                        self.theme.apply(Color::Muted, &format!("{:>width$}", line_num, width = line_num_width)),
+                        self.theme.apply(
+                            Color::Muted,
+                            &format!("{:>width$}", line_num, width = line_num_width)
+                        ),
                         line
                     ));
                 } else {
@@ -118,7 +171,10 @@ impl ToolResultFormatter {
                     let line_num = idx + 1;
                     result.push_str(&format!(
                         "  {} │ {}\r\n",
-                        self.theme.apply(Color::Muted, &format!("{:>width$}", line_num, width = line_num_width)),
+                        self.theme.apply(
+                            Color::Muted,
+                            &format!("{:>width$}", line_num, width = line_num_width)
+                        ),
                         line
                     ));
                 } else {
@@ -304,6 +360,131 @@ impl ToolResultFormatter {
         }
 
         result
+    }
+
+    /// Format file list with collapsible support
+    fn format_file_list_collapsible(&self, output: &str, tool_name: &str) -> FormattedResult {
+        if let Ok(files) = serde_json::from_str::<Vec<String>>(output) {
+            let total_files = files.len();
+            let threshold = self.config.collapse_threshold;
+
+            // If under threshold, show all files normally
+            if threshold == 0 || total_files <= threshold {
+                return FormattedResult {
+                    display: self.format_file_list(output),
+                    collapsed_content: None,
+                    collapsed_count: 0,
+                    tool_name: tool_name.to_string(),
+                };
+            }
+
+            // Collapse: show summary only
+            let display = format!(
+                "  {} {}\r\n",
+                self.theme.apply(Color::Muted, "▸"),
+                self.theme.apply(
+                    Color::Muted,
+                    &format!("{} files found (use /results to expand)", total_files)
+                )
+            );
+
+            // Build full output for later viewing
+            let mut full_output = String::new();
+            full_output.push_str(&format!(
+                "  {}\r\n",
+                self.theme
+                    .apply(Color::Muted, &format!("({} items)", total_files))
+            ));
+
+            for file in &files {
+                if file.ends_with('/') {
+                    full_output
+                        .push_str(&format!("  {}\r\n", self.theme.apply(Color::Agent, file)));
+                } else {
+                    full_output.push_str(&format!("  {}\r\n", file));
+                }
+            }
+
+            FormattedResult {
+                display,
+                collapsed_content: Some(full_output),
+                collapsed_count: total_files,
+                tool_name: tool_name.to_string(),
+            }
+        } else {
+            FormattedResult {
+                display: format!("  {}\r\n", output),
+                collapsed_content: None,
+                collapsed_count: 0,
+                tool_name: tool_name.to_string(),
+            }
+        }
+    }
+
+    /// Format code search results with collapsible support
+    fn format_search_results_collapsible(&self, output: &str, tool_name: &str) -> FormattedResult {
+        if output == "No matches found" {
+            return FormattedResult {
+                display: format!("  {}\r\n", self.theme.apply(Color::Muted, output)),
+                collapsed_content: None,
+                collapsed_count: 0,
+                tool_name: tool_name.to_string(),
+            };
+        }
+
+        let lines: Vec<&str> = output.lines().collect();
+        let total_lines = lines.len();
+        let threshold = self.config.collapse_threshold;
+
+        // If under threshold, show all results normally
+        if threshold == 0 || total_lines <= threshold {
+            return FormattedResult {
+                display: self.format_search_results(output),
+                collapsed_content: None,
+                collapsed_count: 0,
+                tool_name: tool_name.to_string(),
+            };
+        }
+
+        // Collapse: show summary only
+        let display = format!(
+            "  {} {}\r\n",
+            self.theme.apply(Color::Muted, "▸"),
+            self.theme.apply(
+                Color::Muted,
+                &format!("{} matches found (use /results to expand)", total_lines)
+            )
+        );
+
+        // Build full output for later viewing
+        let mut full_output = String::new();
+        full_output.push_str(&format!(
+            "  {}\r\n",
+            self.theme
+                .apply(Color::Muted, &format!("({} matches)", total_lines))
+        ));
+
+        for line in &lines {
+            if line.contains(':') {
+                let parts: Vec<&str> = line.splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    full_output.push_str(&format!(
+                        "  {}: {}\r\n",
+                        self.theme.apply(Color::Agent, parts[0]),
+                        parts[1]
+                    ));
+                    continue;
+                }
+            }
+            full_output.push_str(&format!("  {}\r\n", line));
+        }
+
+        FormattedResult {
+            display,
+            collapsed_content: Some(full_output),
+            collapsed_count: total_lines,
+            tool_name: tool_name.to_string(),
+        }
     }
 
     /// Detect programming language from content (simple heuristics)
@@ -509,6 +690,7 @@ mod tests {
             max_display_lines: 5,
             enable_highlighting: true,
             show_line_numbers: false,
+            collapse_threshold: 5,
         };
 
         assert_eq!(config.max_display_lines, 5);
@@ -520,6 +702,7 @@ mod tests {
             max_display_lines: 50,
             enable_highlighting: false,
             show_line_numbers: false,
+            collapse_threshold: 5,
         };
 
         assert!(!config.enable_highlighting);
@@ -531,6 +714,7 @@ mod tests {
             max_display_lines: 50,
             enable_highlighting: false,
             show_line_numbers: true,
+            collapse_threshold: 5,
         };
         let formatter = ToolResultFormatter::with_config(config);
         let content = "fn main() {\n    println!(\"Hello\");\n}";
@@ -549,6 +733,7 @@ mod tests {
             max_display_lines: 50,
             enable_highlighting: false,
             show_line_numbers: false,
+            collapse_threshold: 5,
         };
         let formatter = ToolResultFormatter::with_config(config);
         let content = "fn main() {\n    println!(\"Hello\");\n}";
@@ -566,6 +751,7 @@ mod tests {
             max_display_lines: 50,
             enable_highlighting: false,
             show_line_numbers: true,
+            collapse_threshold: 5,
         };
         let formatter = ToolResultFormatter::with_config(config);
 
@@ -581,5 +767,74 @@ mod tests {
         assert!(result.contains("  1 │"));
         assert!(result.contains(" 10 │"));
         assert!(result.contains(" 50 │"));
+    }
+
+    #[test]
+    fn test_collapsible_search_under_threshold() {
+        // With default threshold of 5, 3 results should NOT collapse
+        let formatter = ToolResultFormatter::new();
+        let output = "src/a.rs:1:match\nsrc/b.rs:2:match\nsrc/c.rs:3:match";
+        let result = formatter.format_result_collapsible("code_search", output);
+
+        assert!(result.collapsed_content.is_none());
+        assert_eq!(result.collapsed_count, 0);
+        assert!(result.display.contains("3 matches"));
+    }
+
+    #[test]
+    fn test_collapsible_search_over_threshold() {
+        // With default threshold of 5, 10 results should collapse
+        let formatter = ToolResultFormatter::new();
+        let output = (1..=10)
+            .map(|i| format!("src/file{}.rs:{}:match", i, i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let result = formatter.format_result_collapsible("code_search", &output);
+
+        assert!(result.collapsed_content.is_some());
+        assert_eq!(result.collapsed_count, 10);
+        assert!(result.display.contains("10 matches found"));
+        assert!(result.display.contains("/results"));
+    }
+
+    #[test]
+    fn test_collapsible_file_list_over_threshold() {
+        // With default threshold of 5, 10 files should collapse
+        let formatter = ToolResultFormatter::new();
+        let files: Vec<String> = (1..=10).map(|i| format!("file{}.txt", i)).collect();
+        let output = serde_json::to_string(&files).unwrap();
+        let result = formatter.format_result_collapsible("list_files", &output);
+
+        assert!(result.collapsed_content.is_some());
+        assert_eq!(result.collapsed_count, 10);
+        assert!(result.display.contains("10 files found"));
+        assert!(result.display.contains("/results"));
+    }
+
+    #[test]
+    fn test_collapsible_disabled_with_zero_threshold() {
+        let config = ToolResultConfig {
+            collapse_threshold: 0, // Disable collapsing
+            ..Default::default()
+        };
+        let formatter = ToolResultFormatter::with_config(config);
+
+        let output = (1..=100)
+            .map(|i| format!("src/file{}.rs:{}:match", i, i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let result = formatter.format_result_collapsible("code_search", &output);
+
+        // Should NOT collapse even with 100 results
+        assert!(result.collapsed_content.is_none());
+        assert_eq!(result.collapsed_count, 0);
+    }
+
+    #[test]
+    fn test_formatted_result_tool_name() {
+        let formatter = ToolResultFormatter::new();
+        let result = formatter.format_result_collapsible("code_search", "No matches found");
+
+        assert_eq!(result.tool_name, "code_search");
     }
 }

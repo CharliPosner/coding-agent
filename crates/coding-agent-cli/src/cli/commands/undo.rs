@@ -5,7 +5,7 @@
 //! - Restore a modified file to its last committed state
 //! - Unstage a staged file
 
-use super::{Command, CommandContext, CommandResult};
+use super::{CollapsedResults, Command, CommandContext, CommandResult};
 use crate::integrations::git::{GitError, GitRepo};
 use git2::{Repository, ResetType};
 use std::path::Path;
@@ -320,7 +320,7 @@ mod tests {
     use crate::tokens::CostTracker;
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use tempfile::TempDir;
 
     // Mutex to serialize tests that change directories
@@ -459,7 +459,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -538,7 +539,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             let result = cmd.execute(&["--hard"], &mut ctx);
@@ -597,7 +599,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -648,7 +651,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -697,7 +701,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -759,7 +764,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             // Revert the file with --hard

@@ -1,6 +1,6 @@
 //! The /cost command - shows detailed token usage and cost breakdown
 
-use super::{Command, CommandContext, CommandResult};
+use super::{CollapsedResults, Command, CommandContext, CommandResult};
 
 pub struct CostCommand;
 
@@ -25,6 +25,7 @@ mod tests {
     use super::*;
     use crate::cli::commands::CommandRegistry;
     use crate::tokens::{CostTracker, ModelPricing};
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_cost_command_name() {
@@ -53,6 +54,7 @@ mod tests {
             cost_tracker,
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -80,6 +82,7 @@ mod tests {
             cost_tracker,
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -102,6 +105,7 @@ mod tests {
             cost_tracker,
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&[], &mut ctx);

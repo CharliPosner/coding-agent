@@ -2,25 +2,33 @@
 //!
 //! This module implements the main loop: read → parse → execute → display → repeat
 
-use super::commands::{parse_command, CommandContext, CommandRegistry, CommandResult};
+use super::commands::{
+    parse_command, CollapsedResults, CommandContext, CommandRegistry, CommandResult,
+};
 use super::input::{InputHandler, InputResult};
 use super::modes::Mode;
 use super::terminal::Terminal;
 use crate::agents::manager::AgentManager;
 use crate::config::Config;
 use crate::integrations::{Session, SessionManager};
-use crate::permissions::{OperationType, PermissionChecker, PermissionDecision, PermissionPrompt, PermissionResponse, TrustedPaths};
+use crate::permissions::{
+    OperationType, PermissionChecker, PermissionDecision, PermissionPrompt, PermissionResponse,
+    TrustedPaths,
+};
 use crate::tokens::{CostTracker, ModelPricing, TokenCounter};
 use crate::tools::{
     create_tool_definitions, tool_definitions_to_api, ToolExecutor, ToolExecutorConfig,
 };
-use crate::ui::{ContextBar, FunFactClient, LongWaitDetector, MarkdownRenderer, StatusBar, Theme, ThinkingMessages, ToolExecutionSpinner, ToolResultFormatter};
+use crate::ui::{
+    ContextBar, FunFactClient, LongWaitDetector, MarkdownRenderer, StatusBar, Theme,
+    ThinkingMessages, ToolExecutionSpinner, ToolResultFormatter,
+};
 use coding_agent_core::{
     ContentBlock, Message, MessageRequest, MessageResponse, Tool, ToolDefinition,
 };
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -112,6 +120,8 @@ pub struct Repl {
     status_bar_lines: usize,
     /// Markdown renderer for agent responses
     markdown_renderer: MarkdownRenderer,
+    /// Last collapsed results for /results command
+    collapsed_results: Arc<Mutex<CollapsedResults>>,
 }
 
 impl Repl {
@@ -243,6 +253,7 @@ impl Repl {
             status_bar,
             status_bar_lines: 0,
             markdown_renderer,
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         }
     }
 
@@ -405,9 +416,8 @@ impl Repl {
             };
 
             // Start long wait detector
-            let mut detector = LongWaitDetector::with_threshold(
-                Duration::from_secs(self.fun_fact_delay as u64)
-            );
+            let mut detector =
+                LongWaitDetector::with_threshold(Duration::from_secs(self.fun_fact_delay as u64));
             detector.start();
 
             // Call Claude API
@@ -518,9 +528,20 @@ impl Repl {
                         let summary = self.summarize_tool_result(&name, output);
                         spinner.finish_success_with_message(&summary);
 
-                        // Display formatted result
-                        let formatted = self.tool_result_formatter.format_result(&name, output);
-                        for line in formatted.lines() {
+                        // Display formatted result with collapsible support
+                        let formatted = self
+                            .tool_result_formatter
+                            .format_result_collapsible(&name, output);
+
+                        // Store collapsed content if any
+                        if let Some(ref collapsed_content) = formatted.collapsed_content {
+                            let mut collapsed = self.collapsed_results.lock().unwrap();
+                            collapsed.content = Some(collapsed_content.clone());
+                            collapsed.tool_name = formatted.tool_name.clone();
+                            collapsed.count = formatted.collapsed_count;
+                        }
+
+                        for line in formatted.display.lines() {
                             self.print_line(line);
                         }
                         self.print_newline();
@@ -540,10 +561,17 @@ impl Repl {
                             self.print_line("\x1b[33m  → Diagnosing issue...\x1b[0m");
 
                             // Attempt to spawn a fix-agent
-                            if let Some(fix_result) = self.attempt_auto_fix(execution_result.clone(), &name, input.clone()) {
+                            if let Some(fix_result) = self.attempt_auto_fix(
+                                execution_result.clone(),
+                                &name,
+                                input.clone(),
+                            ) {
                                 if fix_result.is_success() {
                                     // Fix succeeded! Show what happened
-                                    self.print_line(&format!("\x1b[32m  ✓ Auto-fixed: {}\x1b[0m", fix_result.original_error));
+                                    self.print_line(&format!(
+                                        "\x1b[32m  ✓ Auto-fixed: {}\x1b[0m",
+                                        fix_result.original_error
+                                    ));
 
                                     // Show modified files
                                     let files = fix_result.all_modified_files();
@@ -555,28 +583,55 @@ impl Repl {
 
                                     // Show test generation
                                     if let Some(test) = &fix_result.generated_test {
-                                        self.print_line(&format!("    + Generated regression test: {}", test.suggested_path.display()));
+                                        self.print_line(&format!(
+                                            "    + Generated regression test: {}",
+                                            test.suggested_path.display()
+                                        ));
                                     }
 
                                     // Re-run the original tool
                                     self.print_line("  → Re-running original tool...");
                                     self.print_newline();
 
-                                    let retry_spinner = if let Some(target) = self.extract_target(&name, &input) {
-                                        ToolExecutionSpinner::with_target(&name, target, self.theme.clone())
-                                    } else {
-                                        ToolExecutionSpinner::new(&name, self.theme.clone())
-                                    };
+                                    let retry_spinner =
+                                        if let Some(target) = self.extract_target(&name, &input) {
+                                            ToolExecutionSpinner::with_target(
+                                                &name,
+                                                target,
+                                                self.theme.clone(),
+                                            )
+                                        } else {
+                                            ToolExecutionSpinner::new(&name, self.theme.clone())
+                                        };
 
-                                    let retry_result = self.tool_executor.execute(id.clone(), &name, input.clone());
+                                    let retry_result = self.tool_executor.execute(
+                                        id.clone(),
+                                        &name,
+                                        input.clone(),
+                                    );
 
                                     match retry_result.result {
                                         Ok(output) => {
-                                            let summary = self.summarize_tool_result(&name, &output);
+                                            let summary =
+                                                self.summarize_tool_result(&name, &output);
                                             retry_spinner.finish_success_with_message(&summary);
 
-                                            let formatted = self.tool_result_formatter.format_result(&name, &output);
-                                            for line in formatted.lines() {
+                                            let formatted = self
+                                                .tool_result_formatter
+                                                .format_result_collapsible(&name, &output);
+
+                                            // Store collapsed content if any
+                                            if let Some(ref collapsed_content) =
+                                                formatted.collapsed_content
+                                            {
+                                                let mut collapsed =
+                                                    self.collapsed_results.lock().unwrap();
+                                                collapsed.content = Some(collapsed_content.clone());
+                                                collapsed.tool_name = formatted.tool_name.clone();
+                                                collapsed.count = formatted.collapsed_count;
+                                            }
+
+                                            for line in formatted.display.lines() {
                                                 self.print_line(line);
                                             }
                                             self.print_newline();
@@ -592,7 +647,10 @@ impl Repl {
                                         }
                                         Err(retry_error) => {
                                             retry_spinner.finish_failed(&retry_error.message);
-                                            self.print_line(&format!("\x1b[31m  ✗ Retry failed: {}\x1b[0m", retry_error.message));
+                                            self.print_line(&format!(
+                                                "\x1b[31m  ✗ Retry failed: {}\x1b[0m",
+                                                retry_error.message
+                                            ));
                                             self.print_newline();
 
                                             // Fall through to normal error handling
@@ -606,12 +664,18 @@ impl Repl {
                                     }
                                 } else {
                                     // Fix failed after all attempts
-                                    self.print_line(&format!("\x1b[31m  ✗ Auto-fix failed after {} attempts\x1b[0m", fix_result.attempt_count()));
+                                    self.print_line(&format!(
+                                        "\x1b[31m  ✗ Auto-fix failed after {} attempts\x1b[0m",
+                                        fix_result.attempt_count()
+                                    ));
 
                                     // Show the attempts that were made
                                     for attempt in &fix_result.attempts {
                                         if let Some(error_msg) = &attempt.error_message {
-                                            self.print_line(&format!("    Attempt {}: {}", attempt.attempt_number, error_msg));
+                                            self.print_line(&format!(
+                                                "    Attempt {}: {}",
+                                                attempt.attempt_number, error_msg
+                                            ));
                                         }
                                     }
                                 }
@@ -619,8 +683,12 @@ impl Repl {
                         }
 
                         // Check if this is a permission error that we can handle
-                        if let crate::tools::ErrorCategory::Permission { ref resource } = tool_error.category {
-                            if let Some(handled) = self.handle_permission_error(resource, &id, &name, input.clone()) {
+                        if let crate::tools::ErrorCategory::Permission { ref resource } =
+                            tool_error.category
+                        {
+                            if let Some(handled) =
+                                self.handle_permission_error(resource, &id, &name, input.clone())
+                            {
                                 // Permission was handled (either granted or denied)
                                 tool_results.push(handled);
                                 continue;
@@ -628,13 +696,18 @@ impl Repl {
                         }
 
                         // Check if this is a resource error that we can suggest alternatives for
-                        if let crate::tools::ErrorCategory::Resource { ref resource_type } = tool_error.category {
+                        if let crate::tools::ErrorCategory::Resource { ref resource_type } =
+                            tool_error.category
+                        {
                             self.handle_resource_error(resource_type, &tool_error.message);
                         }
 
                         // Show suggested fix if available and no auto-fix was attempted
                         if let Some(suggested_fix) = &tool_error.suggested_fix {
-                            self.print_line(&format!("\x1b[33m  💡 Suggestion: {}\x1b[0m", suggested_fix));
+                            self.print_line(&format!(
+                                "\x1b[33m  💡 Suggestion: {}\x1b[0m",
+                                suggested_fix
+                            ));
                         }
                         self.print_newline();
 
@@ -665,9 +738,10 @@ impl Repl {
     /// Extract the target (e.g., file path) from a tool call input
     fn extract_target(&self, name: &str, input: &serde_json::Value) -> Option<String> {
         match name {
-            "read_file" | "write_file" | "edit_file" => {
-                input.get("path").and_then(|v| v.as_str()).map(|s| s.to_string())
-            }
+            "read_file" | "write_file" | "edit_file" => input
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             "list_files" => {
                 let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
                 Some(path.to_string())
@@ -682,9 +756,10 @@ impl Repl {
                     }
                 })
             }
-            "code_search" => {
-                input.get("pattern").and_then(|v| v.as_str()).map(|s| format!("'{}'", s))
-            }
+            "code_search" => input
+                .get("pattern")
+                .and_then(|v| v.as_str())
+                .map(|s| format!("'{}'", s)),
             _ => None,
         }
     }
@@ -892,20 +967,25 @@ impl Repl {
                         self.print_line("  → Re-running tool...");
                         self.print_newline();
 
-                        let spinner = if let Some(target) = self.extract_target(tool_name, &tool_input) {
+                        let spinner = if let Some(target) =
+                            self.extract_target(tool_name, &tool_input)
+                        {
                             ToolExecutionSpinner::with_target(tool_name, target, self.theme.clone())
                         } else {
                             ToolExecutionSpinner::new(tool_name, self.theme.clone())
                         };
 
-                        let result = self.tool_executor.execute(tool_use_id, tool_name, tool_input);
+                        let result = self
+                            .tool_executor
+                            .execute(tool_use_id, tool_name, tool_input);
 
                         match result.result {
                             Ok(output) => {
                                 let summary = self.summarize_tool_result(tool_name, &output);
                                 spinner.finish_success_with_message(&summary);
 
-                                let formatted = self.tool_result_formatter.format_result(tool_name, &output);
+                                let formatted =
+                                    self.tool_result_formatter.format_result(tool_name, &output);
                                 for line in formatted.lines() {
                                     self.print_line(line);
                                 }
@@ -919,12 +999,18 @@ impl Repl {
                             }
                             Err(error) => {
                                 spinner.finish_failed(&error.message);
-                                self.print_line(&format!("\x1b[31m  ✗ Still failed: {}\x1b[0m", error.message));
+                                self.print_line(&format!(
+                                    "\x1b[31m  ✗ Still failed: {}\x1b[0m",
+                                    error.message
+                                ));
                                 self.print_newline();
 
                                 Some(ContentBlock::ToolResult {
                                     tool_use_id: tool_use_id.to_string(),
-                                    content: format!("Permission granted but operation failed: {}", error.message),
+                                    content: format!(
+                                        "Permission granted but operation failed: {}",
+                                        error.message
+                                    ),
                                     is_error: Some(true),
                                 })
                             }
@@ -951,25 +1037,47 @@ impl Repl {
                                         match config.add_trusted_path(&path_str) {
                                             Ok(_) => {
                                                 // Successfully added to config
-                                                checker.record_decision(path, operation, PermissionDecision::Allowed);
+                                                checker.record_decision(
+                                                    path,
+                                                    operation,
+                                                    PermissionDecision::Allowed,
+                                                );
                                                 format!("  → Added '{}' to trusted paths and saved to config", path_str)
                                             }
                                             Err(e) => {
                                                 // Config update failed, but still allow for this session
-                                                checker.record_decision(path, operation, PermissionDecision::Allowed);
+                                                checker.record_decision(
+                                                    path,
+                                                    operation,
+                                                    PermissionDecision::Allowed,
+                                                );
                                                 format!("\x1b[33m  ⚠ Added to session but failed to save to config: {}\x1b[0m", e)
                                             }
                                         }
                                     } else {
                                         // No app config available, just record in session
-                                        checker.record_decision(path, operation, PermissionDecision::Allowed);
-                                        format!("  → Added '{}' to trusted paths for this session", path_str)
+                                        checker.record_decision(
+                                            path,
+                                            operation,
+                                            PermissionDecision::Allowed,
+                                        );
+                                        format!(
+                                            "  → Added '{}' to trusted paths for this session",
+                                            path_str
+                                        )
                                     }
                                 }
                                 Err(e) => {
                                     // Still allow for this session
-                                    checker.record_decision(path, operation, PermissionDecision::Allowed);
-                                    format!("\x1b[33m  ⚠ Could not add to trusted paths: {}\x1b[0m", e)
+                                    checker.record_decision(
+                                        path,
+                                        operation,
+                                        PermissionDecision::Allowed,
+                                    );
+                                    format!(
+                                        "\x1b[33m  ⚠ Could not add to trusted paths: {}\x1b[0m",
+                                        e
+                                    )
                                 }
                             }
                         } else {
@@ -983,20 +1091,25 @@ impl Repl {
                         self.print_line("  → Re-running tool...");
                         self.print_newline();
 
-                        let spinner = if let Some(target) = self.extract_target(tool_name, &tool_input) {
+                        let spinner = if let Some(target) =
+                            self.extract_target(tool_name, &tool_input)
+                        {
                             ToolExecutionSpinner::with_target(tool_name, target, self.theme.clone())
                         } else {
                             ToolExecutionSpinner::new(tool_name, self.theme.clone())
                         };
 
-                        let result = self.tool_executor.execute(tool_use_id, tool_name, tool_input);
+                        let result = self
+                            .tool_executor
+                            .execute(tool_use_id, tool_name, tool_input);
 
                         match result.result {
                             Ok(output) => {
                                 let summary = self.summarize_tool_result(tool_name, &output);
                                 spinner.finish_success_with_message(&summary);
 
-                                let formatted = self.tool_result_formatter.format_result(tool_name, &output);
+                                let formatted =
+                                    self.tool_result_formatter.format_result(tool_name, &output);
                                 for line in formatted.lines() {
                                     self.print_line(line);
                                 }
@@ -1010,12 +1123,18 @@ impl Repl {
                             }
                             Err(error) => {
                                 spinner.finish_failed(&error.message);
-                                self.print_line(&format!("\x1b[31m  ✗ Still failed: {}\x1b[0m", error.message));
+                                self.print_line(&format!(
+                                    "\x1b[31m  ✗ Still failed: {}\x1b[0m",
+                                    error.message
+                                ));
                                 self.print_newline();
 
                                 Some(ContentBlock::ToolResult {
                                     tool_use_id: tool_use_id.to_string(),
-                                    content: format!("Permission granted but operation failed: {}", error.message),
+                                    content: format!(
+                                        "Permission granted but operation failed: {}",
+                                        error.message
+                                    ),
                                     is_error: Some(true),
                                 })
                             }
@@ -1039,7 +1158,10 @@ impl Repl {
                 }
             }
             Err(e) => {
-                self.print_line(&format!("\x1b[31m  ✗ Error reading permission response: {}\x1b[0m", e));
+                self.print_line(&format!(
+                    "\x1b[31m  ✗ Error reading permission response: {}\x1b[0m",
+                    e
+                ));
                 self.print_newline();
 
                 Some(ContentBlock::ToolResult {
@@ -1087,7 +1209,10 @@ impl Repl {
             }
             _ => {
                 // For unknown resource types, just show a generic message
-                self.print_line(&format!("\x1b[33m  💡 Resource error ({}): Consider alternative approaches\x1b[0m", resource_type));
+                self.print_line(&format!(
+                    "\x1b[33m  💡 Resource error ({}): Consider alternative approaches\x1b[0m",
+                    resource_type
+                ));
             }
         }
     }
@@ -1103,18 +1228,25 @@ impl Repl {
         // Filter to only show active agents (not complete or cancelled)
         let active_statuses: Vec<_> = statuses
             .into_iter()
-            .filter(|s| s.state.is_active() || matches!(s.state, crate::agents::status::AgentState::Queued))
+            .filter(|s| {
+                s.state.is_active() || matches!(s.state, crate::agents::status::AgentState::Queued)
+            })
             .collect();
 
         // Clear previous status bar if it was rendered
         if self.status_bar_lines > 0 {
-            self.status_bar.clear(self.status_bar_lines).map_err(|e| e.to_string())?;
+            self.status_bar
+                .clear(self.status_bar_lines)
+                .map_err(|e| e.to_string())?;
             self.status_bar_lines = 0;
         }
 
         // Render new status bar if there are active agents
         if !active_statuses.is_empty() {
-            self.status_bar_lines = self.status_bar.render(&active_statuses).map_err(|e| e.to_string())?;
+            self.status_bar_lines = self
+                .status_bar
+                .render(&active_statuses)
+                .map_err(|e| e.to_string())?;
         }
 
         Ok(())
@@ -1307,6 +1439,7 @@ impl Repl {
             cost_tracker: self.cost_tracker.clone(),
             agent_manager: Some(Arc::clone(&self.agent_manager)),
             config: Arc::new(self.app_config.clone().unwrap_or_default()),
+            collapsed_results: Arc::clone(&self.collapsed_results),
         };
 
         match self.registry.get(name) {

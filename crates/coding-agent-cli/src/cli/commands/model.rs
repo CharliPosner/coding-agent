@@ -1,6 +1,6 @@
 //! The /model command - switch AI model
 
-use super::{Command, CommandContext, CommandResult};
+use super::{CollapsedResults, Command, CommandContext, CommandResult};
 
 pub struct ModelCommand;
 
@@ -163,6 +163,7 @@ mod tests {
     use super::*;
     use crate::cli::commands::{CommandContext, CommandRegistry};
     use crate::tokens::CostTracker;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_model_command_name() {
@@ -193,6 +194,7 @@ mod tests {
             cost_tracker,
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&["claude-3-opus"], &mut ctx);
@@ -216,6 +218,7 @@ mod tests {
             cost_tracker,
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&["invalid-model"], &mut ctx);
@@ -239,6 +242,7 @@ mod tests {
             cost_tracker,
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&[], &mut ctx);

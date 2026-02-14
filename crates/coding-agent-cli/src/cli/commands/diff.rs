@@ -3,7 +3,7 @@
 //! This command displays both staged and unstaged changes in the repository,
 //! similar to running `git diff` and `git diff --cached` together.
 
-use super::{Command, CommandContext, CommandResult};
+use super::{CollapsedResults, Command, CommandContext, CommandResult};
 use crate::integrations::git::{GitError, GitRepo};
 use git2::{DiffOptions, Repository};
 
@@ -300,6 +300,7 @@ mod tests {
     use crate::tokens::CostTracker;
     use std::fs;
     use std::path::Path;
+    use std::sync::{Arc, Mutex};
     use tempfile::TempDir;
 
     fn init_test_repo() -> (TempDir, Repository) {
@@ -507,7 +508,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -559,7 +561,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -616,7 +619,8 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
-            config: std::sync::Arc::new(crate::config::Config::default()),
+                config: std::sync::Arc::new(crate::config::Config::default()),
+                collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
             };
 
             // Request only staged changes

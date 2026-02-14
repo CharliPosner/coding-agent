@@ -1,6 +1,6 @@
 //! The /status command - shows active tasks and running agents
 
-use super::{Command, CommandContext, CommandResult};
+use super::{CollapsedResults, Command, CommandContext, CommandResult};
 
 pub struct StatusCommand;
 
@@ -50,6 +50,7 @@ mod tests {
     use super::*;
     use crate::cli::commands::CommandRegistry;
     use crate::tokens::CostTracker;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_status_command_name() {
@@ -73,6 +74,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: Some(manager),
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -98,6 +100,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -142,6 +145,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: Some(manager),
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&[], &mut ctx);

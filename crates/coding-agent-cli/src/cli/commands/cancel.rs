@@ -93,9 +93,9 @@ fn parse_agent_id(s: &str) -> Option<AgentId> {
 mod tests {
     use super::*;
     use crate::agents::manager::AgentManager;
-    use crate::cli::commands::CommandRegistry;
+    use crate::cli::commands::{CollapsedResults, CommandRegistry};
     use crate::tokens::CostTracker;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     #[test]
@@ -119,6 +119,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: Some(Arc::new(AgentManager::new())),
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -139,6 +140,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: Some(Arc::new(AgentManager::new())),
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&["999"], &mut ctx);
@@ -171,6 +173,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: Some(manager.clone()),
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         // Give the agent time to start
@@ -224,6 +227,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&["1"], &mut ctx);
@@ -244,6 +248,7 @@ mod tests {
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: Some(Arc::new(AgentManager::new())),
             config: std::sync::Arc::new(crate::config::Config::default()),
+            collapsed_results: Arc::new(Mutex::new(CollapsedResults::default())),
         };
 
         let result = cmd.execute(&["invalid"], &mut ctx);
