@@ -192,6 +192,7 @@ mod tests {
             registry: registry.clone(),
             cost_tracker,
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&["claude-3-opus"], &mut ctx);
@@ -214,6 +215,7 @@ mod tests {
             registry: registry.clone(),
             cost_tracker,
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&["invalid-model"], &mut ctx);
@@ -236,6 +238,7 @@ mod tests {
             registry: registry.clone(),
             cost_tracker,
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&[], &mut ctx);

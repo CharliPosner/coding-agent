@@ -19,7 +19,7 @@ impl Command for DocumentCommand {
         "/document <topic> [--new] [--search] [--type <meeting|concept|reference|general>]"
     }
 
-    fn execute(&self, args: &[&str], _ctx: &mut CommandContext) -> CommandResult {
+    fn execute(&self, args: &[&str], ctx: &mut CommandContext) -> CommandResult {
         if args.is_empty() {
             return CommandResult::Error(
                 "Usage: /document <topic> [--new] [--search] [--type <type>]\n\
@@ -69,8 +69,8 @@ impl Command for DocumentCommand {
 
         let topic = topic_parts.join(" ");
 
-        // Get vault path from config (default to ~/Documents/Personal/)
-        let vault_path = get_vault_path();
+        // Get vault path from config
+        let vault_path = get_vault_path(&ctx.config);
 
         // Create vault manager
         let vault = match ObsidianVault::new(vault_path.clone()) {
@@ -180,11 +180,9 @@ impl Command for DocumentCommand {
     }
 }
 
-/// Get the Obsidian vault path from config or use default
-fn get_vault_path() -> PathBuf {
-    // TODO: Once config supports obsidian settings, read from there
-    // For now, use the default from the spec
-    expand_tilde(PathBuf::from("~/Documents/Personal"))
+/// Get the Obsidian vault path from config
+fn get_vault_path(config: &crate::config::Config) -> PathBuf {
+    expand_tilde(PathBuf::from(&config.integrations.obsidian.vault_path))
 }
 
 /// Expand tilde (~) in path to home directory
@@ -265,6 +263,7 @@ mod tests {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -290,6 +289,7 @@ mod tests {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&["test", "topic"], &mut ctx);
@@ -308,6 +308,7 @@ mod tests {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         // Just test that the flag is parsed (won't actually search without a valid vault)
@@ -329,6 +330,7 @@ mod tests {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&["test", "--new"], &mut ctx);

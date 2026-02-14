@@ -1192,6 +1192,7 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
             };
 
             // Run the commit with -a flag to stage the new file
@@ -1284,6 +1285,7 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -1338,6 +1340,7 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
             };
 
             let result = cmd.execute(&[], &mut ctx);

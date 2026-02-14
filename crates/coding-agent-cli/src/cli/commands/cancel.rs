@@ -118,6 +118,7 @@ mod tests {
             registry: registry.clone(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: Some(Arc::new(AgentManager::new())),
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -137,6 +138,7 @@ mod tests {
             registry: registry.clone(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: Some(Arc::new(AgentManager::new())),
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&["999"], &mut ctx);
@@ -168,6 +170,7 @@ mod tests {
             registry: registry.clone(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: Some(manager.clone()),
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         // Give the agent time to start
@@ -220,6 +223,7 @@ mod tests {
             registry: registry.clone(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&["1"], &mut ctx);
@@ -239,6 +243,7 @@ mod tests {
             registry: registry.clone(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: Some(Arc::new(AgentManager::new())),
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&["invalid"], &mut ctx);

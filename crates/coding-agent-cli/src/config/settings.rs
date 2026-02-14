@@ -20,6 +20,8 @@ pub struct Config {
     pub behavior: BehaviorConfig,
     /// Error recovery settings
     pub error_recovery: ErrorRecoveryConfig,
+    /// Integration settings
+    pub integrations: IntegrationsConfig,
 }
 
 /// Permission settings
@@ -92,6 +94,34 @@ pub struct ErrorRecoveryConfig {
     pub max_retry_attempts: u32,
 }
 
+/// Integration settings
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct IntegrationsConfig {
+    /// Obsidian integration settings
+    pub obsidian: ObsidianConfig,
+    /// Git integration settings
+    pub git: GitConfig,
+}
+
+/// Obsidian vault settings
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ObsidianConfig {
+    /// Path to Obsidian vault
+    pub vault_path: String,
+}
+
+/// Git integration settings
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct GitConfig {
+    /// Whether to auto-stage files during commit
+    pub auto_stage: bool,
+    /// Commit message style: purpose, conventional, or simple
+    pub commit_style: String,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -101,6 +131,7 @@ impl Default for Config {
             persistence: PersistenceConfig::default(),
             behavior: BehaviorConfig::default(),
             error_recovery: ErrorRecoveryConfig::default(),
+            integrations: IntegrationsConfig::default(),
         }
     }
 }
@@ -160,6 +191,32 @@ impl Default for ErrorRecoveryConfig {
             auto_fix: true,
             generate_tests: true,
             max_retry_attempts: 3,
+        }
+    }
+}
+
+impl Default for IntegrationsConfig {
+    fn default() -> Self {
+        Self {
+            obsidian: ObsidianConfig::default(),
+            git: GitConfig::default(),
+        }
+    }
+}
+
+impl Default for ObsidianConfig {
+    fn default() -> Self {
+        Self {
+            vault_path: "~/Documents/Personal/".to_string(),
+        }
+    }
+}
+
+impl Default for GitConfig {
+    fn default() -> Self {
+        Self {
+            auto_stage: false,
+            commit_style: "purpose".to_string(),
         }
     }
 }

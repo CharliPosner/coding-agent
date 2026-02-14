@@ -1302,6 +1302,7 @@ impl Repl {
             registry: self.registry.clone(),
             cost_tracker: self.cost_tracker.clone(),
             agent_manager: Some(Arc::clone(&self.agent_manager)),
+            config: Arc::new(self.app_config.clone().unwrap_or_default()),
         };
 
         match self.registry.get(name) {

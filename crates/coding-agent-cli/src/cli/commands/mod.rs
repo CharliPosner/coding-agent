@@ -65,6 +65,8 @@ pub struct CommandContext {
     pub cost_tracker: CostTracker,
     /// Agent manager for tracking and controlling agents
     pub agent_manager: Option<std::sync::Arc<crate::agents::manager::AgentManager>>,
+    /// Configuration settings
+    pub config: std::sync::Arc<crate::config::Config>,
 }
 
 /// Registry of available commands

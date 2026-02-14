@@ -507,6 +507,7 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -558,6 +559,7 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
             };
 
             let result = cmd.execute(&[], &mut ctx);
@@ -614,6 +616,7 @@ mod tests {
                 registry,
                 cost_tracker,
                 agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
             };
 
             // Request only staged changes

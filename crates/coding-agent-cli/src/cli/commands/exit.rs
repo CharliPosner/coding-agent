@@ -71,6 +71,7 @@ mod tests {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -90,6 +91,7 @@ mod tests {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&[], &mut ctx);
@@ -109,6 +111,7 @@ mod tests {
             registry: CommandRegistry::with_defaults(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&[], &mut ctx);

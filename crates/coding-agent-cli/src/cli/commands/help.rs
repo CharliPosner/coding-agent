@@ -55,6 +55,7 @@ mod tests {
             registry: registry.clone(),
             cost_tracker: CostTracker::with_default_model(),
             agent_manager: None,
+            config: std::sync::Arc::new(crate::config::Config::default()),
         };
 
         let result = cmd.execute(&[], &mut ctx);
