@@ -6,6 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use chrono::{DateTime, Local};
 
 /// Errors that can occur during Obsidian operations
 #[derive(Debug)]
@@ -48,6 +49,116 @@ impl std::error::Error for ObsidianError {
             ObsidianError::WriteError(e) => Some(e),
             _ => None,
         }
+    }
+}
+
+/// Type of note template to generate
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteType {
+    /// Meeting notes with attendees, agenda, and action items
+    Meeting,
+    /// Concept explanation with definition, examples, and links
+    Concept,
+    /// Reference documentation with structured information
+    Reference,
+    /// General purpose note
+    General,
+}
+
+impl NoteType {
+    /// Parse a note type from a string
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "meeting" => Some(NoteType::Meeting),
+            "concept" => Some(NoteType::Concept),
+            "reference" => Some(NoteType::Reference),
+            "general" => Some(NoteType::General),
+            _ => None,
+        }
+    }
+
+    /// Get the display name of this note type
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            NoteType::Meeting => "Meeting",
+            NoteType::Concept => "Concept",
+            NoteType::Reference => "Reference",
+            NoteType::General => "General",
+        }
+    }
+}
+
+/// Metadata for a note
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoteMetadata {
+    /// Tags for categorization
+    pub tags: Vec<String>,
+    /// Date created
+    pub created: DateTime<Local>,
+    /// Related notes (backlinks)
+    pub related: Vec<String>,
+    /// Note type
+    pub note_type: NoteType,
+}
+
+impl Default for NoteMetadata {
+    fn default() -> Self {
+        Self {
+            tags: Vec::new(),
+            created: Local::now(),
+            related: Vec::new(),
+            note_type: NoteType::General,
+        }
+    }
+}
+
+impl NoteMetadata {
+    /// Create new metadata with the given type
+    pub fn with_type(note_type: NoteType) -> Self {
+        Self {
+            note_type,
+            ..Default::default()
+        }
+    }
+
+    /// Add a tag
+    pub fn add_tag(&mut self, tag: impl Into<String>) {
+        self.tags.push(tag.into());
+    }
+
+    /// Add a related note
+    pub fn add_related(&mut self, note: impl Into<String>) {
+        self.related.push(note.into());
+    }
+
+    /// Format metadata as YAML frontmatter
+    pub fn to_frontmatter(&self) -> String {
+        let mut output = String::from("---\n");
+
+        // Date
+        output.push_str(&format!("created: {}\n", self.created.format("%Y-%m-%d %H:%M")));
+
+        // Note type
+        output.push_str(&format!("type: {}\n", self.note_type.display_name()));
+
+        // Tags
+        if !self.tags.is_empty() {
+            output.push_str("tags:\n");
+            for tag in &self.tags {
+                output.push_str(&format!("  - {}\n", tag));
+            }
+        }
+
+        // Related notes
+        if !self.related.is_empty() {
+            output.push_str("related:\n");
+            for note in &self.related {
+                output.push_str(&format!("  - \"[[{}]]\"\n", note));
+            }
+        }
+
+        output.push_str("---\n\n");
+        output
     }
 }
 
@@ -228,6 +339,69 @@ impl ObsidianVault {
             format!("{}.md", sanitize_filename(topic))
         }
     }
+
+    /// Generate a note template based on type and topic
+    pub fn generate_template(&self, topic: &str, note_type: NoteType) -> String {
+        // Infer tags from topic
+        let mut metadata = NoteMetadata::with_type(note_type);
+        infer_tags_from_topic(topic, &mut metadata);
+
+        let mut content = metadata.to_frontmatter();
+
+        match note_type {
+            NoteType::Meeting => {
+                content.push_str(&format!("# {}\n\n", topic));
+                content.push_str("## Attendees\n\n");
+                content.push_str("- \n\n");
+                content.push_str("## Agenda\n\n");
+                content.push_str("1. \n\n");
+                content.push_str("## Discussion\n\n");
+                content.push_str("### Topic 1\n\n");
+                content.push_str("\n\n");
+                content.push_str("## Action Items\n\n");
+                content.push_str("- [ ] \n\n");
+                content.push_str("## Next Steps\n\n");
+                content.push_str("\n");
+            }
+            NoteType::Concept => {
+                content.push_str(&format!("# {}\n\n", topic));
+                content.push_str("## Overview\n\n");
+                content.push_str("Brief explanation of what this concept is.\n\n");
+                content.push_str("## Key Points\n\n");
+                content.push_str("- Point 1\n");
+                content.push_str("- Point 2\n");
+                content.push_str("- Point 3\n\n");
+                content.push_str("## Examples\n\n");
+                content.push_str("```\n// Example code or usage\n```\n\n");
+                content.push_str("## Related Concepts\n\n");
+                content.push_str("- \n\n");
+                content.push_str("## References\n\n");
+                content.push_str("- \n");
+            }
+            NoteType::Reference => {
+                content.push_str(&format!("# {}\n\n", topic));
+                content.push_str("> Quick reference for [topic]\n\n");
+                content.push_str("## Quick Reference\n\n");
+                content.push_str("| Item | Description |\n");
+                content.push_str("|------|-------------|\n");
+                content.push_str("|      |             |\n\n");
+                content.push_str("## Details\n\n");
+                content.push_str("### Section 1\n\n");
+                content.push_str("\n\n");
+                content.push_str("## Common Patterns\n\n");
+                content.push_str("```\n// Pattern example\n```\n\n");
+                content.push_str("## See Also\n\n");
+                content.push_str("- \n");
+            }
+            NoteType::General => {
+                content.push_str(&format!("# {}\n\n", topic));
+                content.push_str("## Notes\n\n");
+                content.push_str("\n");
+            }
+        }
+
+        content
+    }
 }
 
 /// Expand tilde (~) in path to home directory
@@ -275,6 +449,39 @@ fn sanitize_filename(topic: &str) -> String {
         .collect::<String>()
         .trim()
         .to_string()
+}
+
+/// Infer tags from a topic string
+fn infer_tags_from_topic(topic: &str, metadata: &mut NoteMetadata) {
+    let topic_lower = topic.to_lowercase();
+
+    // Programming languages
+    let languages = [
+        "rust", "python", "javascript", "typescript", "java", "c++", "c#", "go", "ruby",
+    ];
+    for lang in &languages {
+        if topic_lower.contains(lang) {
+            metadata.add_tag(lang.to_string());
+            metadata.add_tag("programming");
+        }
+    }
+
+    // General categories
+    if topic_lower.contains("error") || topic_lower.contains("bug") {
+        metadata.add_tag("debugging");
+    }
+    if topic_lower.contains("test") {
+        metadata.add_tag("testing");
+    }
+    if topic_lower.contains("api") {
+        metadata.add_tag("api");
+    }
+    if topic_lower.contains("design") || topic_lower.contains("architecture") {
+        metadata.add_tag("design");
+    }
+    if topic_lower.contains("meeting") {
+        metadata.add_tag("meeting");
+    }
 }
 
 /// Generate a diff preview showing changes between old and new content
@@ -615,5 +822,170 @@ mod tests {
         assert!(diff.contains("0 line(s) unchanged"));
         assert!(diff.contains("0 insertion(s)"));
         assert!(diff.contains("2 deletion(s)"));
+    }
+
+    #[test]
+    fn test_note_type_from_str() {
+        assert_eq!(NoteType::from_str("meeting"), Some(NoteType::Meeting));
+        assert_eq!(NoteType::from_str("MEETING"), Some(NoteType::Meeting));
+        assert_eq!(NoteType::from_str("concept"), Some(NoteType::Concept));
+        assert_eq!(NoteType::from_str("reference"), Some(NoteType::Reference));
+        assert_eq!(NoteType::from_str("general"), Some(NoteType::General));
+        assert_eq!(NoteType::from_str("invalid"), None);
+    }
+
+    #[test]
+    fn test_note_type_display_name() {
+        assert_eq!(NoteType::Meeting.display_name(), "Meeting");
+        assert_eq!(NoteType::Concept.display_name(), "Concept");
+        assert_eq!(NoteType::Reference.display_name(), "Reference");
+        assert_eq!(NoteType::General.display_name(), "General");
+    }
+
+    #[test]
+    fn test_note_metadata_default() {
+        let metadata = NoteMetadata::default();
+        assert_eq!(metadata.note_type, NoteType::General);
+        assert!(metadata.tags.is_empty());
+        assert!(metadata.related.is_empty());
+    }
+
+    #[test]
+    fn test_note_metadata_with_type() {
+        let metadata = NoteMetadata::with_type(NoteType::Meeting);
+        assert_eq!(metadata.note_type, NoteType::Meeting);
+    }
+
+    #[test]
+    fn test_note_metadata_add_tag() {
+        let mut metadata = NoteMetadata::default();
+        metadata.add_tag("rust");
+        metadata.add_tag("programming");
+        assert_eq!(metadata.tags, vec!["rust", "programming"]);
+    }
+
+    #[test]
+    fn test_note_metadata_add_related() {
+        let mut metadata = NoteMetadata::default();
+        metadata.add_related("Related Note 1");
+        metadata.add_related("Related Note 2");
+        assert_eq!(metadata.related, vec!["Related Note 1", "Related Note 2"]);
+    }
+
+    #[test]
+    fn test_note_metadata_to_frontmatter() {
+        let mut metadata = NoteMetadata::with_type(NoteType::Concept);
+        metadata.add_tag("rust");
+        metadata.add_tag("programming");
+        metadata.add_related("Error Handling");
+
+        let frontmatter = metadata.to_frontmatter();
+
+        assert!(frontmatter.starts_with("---\n"));
+        assert!(frontmatter.contains("created:"));
+        assert!(frontmatter.contains("type: Concept"));
+        assert!(frontmatter.contains("tags:"));
+        assert!(frontmatter.contains("  - rust"));
+        assert!(frontmatter.contains("  - programming"));
+        assert!(frontmatter.contains("related:"));
+        assert!(frontmatter.contains("  - \"[[Error Handling]]\""));
+        assert!(frontmatter.ends_with("---\n\n"));
+    }
+
+    #[test]
+    fn test_infer_tags_from_topic_programming() {
+        let mut metadata = NoteMetadata::default();
+        super::infer_tags_from_topic("rust error handling", &mut metadata);
+
+        assert!(metadata.tags.contains(&"rust".to_string()));
+        assert!(metadata.tags.contains(&"programming".to_string()));
+        assert!(metadata.tags.contains(&"debugging".to_string()));
+    }
+
+    #[test]
+    fn test_infer_tags_from_topic_meeting() {
+        let mut metadata = NoteMetadata::default();
+        super::infer_tags_from_topic("weekly team meeting", &mut metadata);
+
+        assert!(metadata.tags.contains(&"meeting".to_string()));
+    }
+
+    #[test]
+    fn test_infer_tags_from_topic_multiple() {
+        let mut metadata = NoteMetadata::default();
+        super::infer_tags_from_topic("python api testing", &mut metadata);
+
+        assert!(metadata.tags.contains(&"python".to_string()));
+        assert!(metadata.tags.contains(&"programming".to_string()));
+        assert!(metadata.tags.contains(&"api".to_string()));
+        assert!(metadata.tags.contains(&"testing".to_string()));
+    }
+
+    #[test]
+    fn test_generate_template_meeting() {
+        let (_temp, vault) = create_test_vault();
+        let template = vault.generate_template("Weekly Team Meeting", NoteType::Meeting);
+
+        assert!(template.contains("---")); // Frontmatter
+        assert!(template.contains("type: Meeting"));
+        assert!(template.contains("# Weekly Team Meeting"));
+        assert!(template.contains("## Attendees"));
+        assert!(template.contains("## Agenda"));
+        assert!(template.contains("## Discussion"));
+        assert!(template.contains("## Action Items"));
+        assert!(template.contains("## Next Steps"));
+    }
+
+    #[test]
+    fn test_generate_template_concept() {
+        let (_temp, vault) = create_test_vault();
+        let template = vault.generate_template("Rust Error Handling", NoteType::Concept);
+
+        assert!(template.contains("---")); // Frontmatter
+        assert!(template.contains("type: Concept"));
+        assert!(template.contains("# Rust Error Handling"));
+        assert!(template.contains("## Overview"));
+        assert!(template.contains("## Key Points"));
+        assert!(template.contains("## Examples"));
+        assert!(template.contains("## Related Concepts"));
+        assert!(template.contains("## References"));
+    }
+
+    #[test]
+    fn test_generate_template_reference() {
+        let (_temp, vault) = create_test_vault();
+        let template = vault.generate_template("Rust Quick Reference", NoteType::Reference);
+
+        assert!(template.contains("---")); // Frontmatter
+        assert!(template.contains("type: Reference"));
+        assert!(template.contains("# Rust Quick Reference"));
+        assert!(template.contains("## Quick Reference"));
+        assert!(template.contains("## Details"));
+        assert!(template.contains("## Common Patterns"));
+        assert!(template.contains("## See Also"));
+    }
+
+    #[test]
+    fn test_generate_template_general() {
+        let (_temp, vault) = create_test_vault();
+        let template = vault.generate_template("General Topic", NoteType::General);
+
+        assert!(template.contains("---")); // Frontmatter
+        assert!(template.contains("type: General"));
+        assert!(template.contains("# General Topic"));
+        assert!(template.contains("## Notes"));
+    }
+
+    #[test]
+    fn test_generate_template_includes_inferred_tags() {
+        let (_temp, vault) = create_test_vault();
+        let template = vault.generate_template("Python API Testing", NoteType::Concept);
+
+        // Should infer tags from topic
+        assert!(template.contains("tags:"));
+        assert!(template.contains("- python"));
+        assert!(template.contains("- programming"));
+        assert!(template.contains("- api"));
+        assert!(template.contains("- testing"));
     }
 }

@@ -2237,9 +2237,9 @@ if groups.len() > 1 {
    - [x] Support updating existing notes with diffs
 
 2. **Note Template System**
-   - [ ] Generate structured note templates by topic
-   - [ ] Include metadata (date, tags, backlinks)
-   - [ ] Support different note types (meeting, concept, reference)
+   - [x] Generate structured note templates by topic
+   - [x] Include metadata (date, tags, backlinks)
+   - [x] Support different note types (meeting, concept, reference)
 
 **Tests:**
 | Test | What it verifies |

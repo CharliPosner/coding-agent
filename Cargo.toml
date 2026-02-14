@@ -46,3 +46,6 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 
 # Async utilities for agent management
 futures = "0.3"
+
+# Date/time handling for Obsidian metadata
+chrono = "0.4"

@@ -1,7 +1,7 @@
 //! The /document command - Obsidian note management
 
 use super::{Command, CommandContext, CommandResult};
-use crate::integrations::{ObsidianError, ObsidianVault};
+use crate::integrations::{NoteType, ObsidianError, ObsidianVault};
 use std::path::PathBuf;
 
 pub struct DocumentCommand;
@@ -16,14 +16,15 @@ impl Command for DocumentCommand {
     }
 
     fn usage(&self) -> &'static str {
-        "/document <topic> [--new] [--search]"
+        "/document <topic> [--new] [--search] [--type <meeting|concept|reference|general>]"
     }
 
     fn execute(&self, args: &[&str], _ctx: &mut CommandContext) -> CommandResult {
         if args.is_empty() {
             return CommandResult::Error(
-                "Usage: /document <topic> [--new] [--search]\n\
-                 Example: /document rust error handling"
+                "Usage: /document <topic> [--new] [--search] [--type <type>]\n\
+                 Example: /document rust error handling --type concept\n\
+                 Types: meeting, concept, reference, general"
                     .to_string(),
             );
         }
@@ -31,14 +32,35 @@ impl Command for DocumentCommand {
         // Parse flags
         let mut search_only = false;
         let mut force_new = false;
+        let mut note_type = NoteType::General;
         let mut topic_parts = Vec::new();
+        let mut i = 0;
 
-        for arg in args {
-            match *arg {
+        while i < args.len() {
+            match args[i] {
                 "--search" => search_only = true,
                 "--new" => force_new = true,
-                _ => topic_parts.push(*arg),
+                "--type" => {
+                    if i + 1 < args.len() {
+                        if let Some(parsed_type) = NoteType::from_str(args[i + 1]) {
+                            note_type = parsed_type;
+                            i += 1; // Skip the type argument
+                        } else {
+                            return CommandResult::Error(format!(
+                                "Invalid note type: {}\nValid types: meeting, concept, reference, general",
+                                args[i + 1]
+                            ));
+                        }
+                    } else {
+                        return CommandResult::Error(
+                            "--type requires an argument (meeting, concept, reference, or general)"
+                                .to_string(),
+                        );
+                    }
+                }
+                _ => topic_parts.push(args[i]),
             }
+            i += 1;
         }
 
         if topic_parts.is_empty() {
@@ -103,20 +125,26 @@ impl Command for DocumentCommand {
         // If --new flag or no results found, create a new note
         if force_new || search_results.is_empty() {
             let suggested_path = vault.suggest_location(&topic);
+            let template = vault.generate_template(&topic, note_type);
 
             let output = format!(
-                "Creating new note about '{}'...\n\n\
+                "Creating new {} note about '{}'...\n\n\
                  Suggested location: {}\n\
                  Vault path: {}\n\n\
-                 I'll help you create this note. What would you like to include?\n\
-                 You can tell me:\n\
-                 - Key points to document\n\
-                 - Structure you'd like (e.g., tutorial, reference, notes)\n\
-                 - Any specific content to include\n\n\
-                 Or just say 'create it' and I'll generate an initial structure based on the topic.",
+                 Generated template preview:\n\
+                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
+                 {}\n\
+                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n\
+                 I can create this note with the template above, or you can tell me:\n\
+                 - Key points to include\n\
+                 - Modifications to the template\n\
+                 - Additional content\n\n\
+                 Say 'create it' to use this template, or describe what you'd like to change.",
+                note_type.display_name(),
                 topic,
                 suggested_path,
-                vault.path().display()
+                vault.path().display(),
+                preview_template(&template)
             );
 
             return CommandResult::Output(output);
@@ -169,6 +197,25 @@ fn expand_tilde(path: PathBuf) -> PathBuf {
         }
     }
     path
+}
+
+/// Preview a template by showing first 15 lines or up to 500 chars
+fn preview_template(template: &str) -> String {
+    let lines: Vec<&str> = template.lines().collect();
+
+    if lines.len() <= 15 && template.len() <= 500 {
+        return template.to_string();
+    }
+
+    let preview: String = lines.iter().take(15).map(|l| format!("{}\n", l)).collect();
+
+    if preview.len() > 500 {
+        format!("{}...\n[truncated]", &preview[..500])
+    } else if lines.len() > 15 {
+        format!("{}...\n[{} more lines]", preview, lines.len() - 15)
+    } else {
+        preview
+    }
 }
 
 #[cfg(test)]

@@ -11,5 +11,5 @@ pub use git::{
     suggest_commit_splits, FileGroup, FileGrouper, FileStatus, FileStatusKind, GitError, GitRepo,
     GroupReason, RepoStatus,
 };
-pub use obsidian::{Note, ObsidianError, ObsidianVault, SearchResult};
+pub use obsidian::{Note, NoteMetadata, NoteType, ObsidianError, ObsidianVault, SearchResult};
 pub use specstory::{MessageRole, Session, SessionInfo, SessionManager, SpecStoryError};
