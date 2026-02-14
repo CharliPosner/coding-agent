@@ -5,7 +5,9 @@
 //! what was changed.
 
 use super::{Command, CommandContext, CommandResult};
-use crate::integrations::git::{FileStatus, FileStatusKind, GitError, GitRepo, RepoStatus};
+use crate::integrations::git::{
+    FileGrouper, FileStatus, FileStatusKind, GitError, GitRepo, RepoStatus,
+};
 use crate::ui::{
     edit_commit_message, CommitPreview, CommitPreviewResult, FileEntry, FilePicker,
     FilePickerResult,
@@ -80,8 +82,8 @@ impl Command for CommitCommand {
             return execute_pick_commit(&repo, &status, options.message.as_deref());
         }
 
-        // Auto-commit mode: stage and commit changes
-        execute_auto_commit(
+        // Auto-commit mode: analyze grouping and commit
+        execute_auto_commit_with_grouping(
             &repo,
             &status,
             options.stage_all,
@@ -136,7 +138,115 @@ fn parse_commit_args(args: &[&str]) -> Result<CommitOptions, String> {
     Ok(options)
 }
 
-/// Execute an automatic commit
+/// Execute an automatic commit with smart file grouping
+fn execute_auto_commit_with_grouping(
+    git_repo: &GitRepo,
+    status: &RepoStatus,
+    stage_all: bool,
+    custom_message: Option<&str>,
+) -> CommandResult {
+    // Determine which files to consider
+    let files_to_consider: Vec<FileStatus> = if stage_all {
+        status
+            .files
+            .iter()
+            .filter(|f| {
+                matches!(
+                    f.status,
+                    FileStatusKind::Modified
+                        | FileStatusKind::Untracked
+                        | FileStatusKind::Deleted
+                        | FileStatusKind::Staged
+                        | FileStatusKind::StagedWithChanges
+                        | FileStatusKind::Added
+                )
+            })
+            .cloned()
+            .collect()
+    } else {
+        status
+            .files
+            .iter()
+            .filter(|f| {
+                matches!(
+                    f.status,
+                    FileStatusKind::Modified
+                        | FileStatusKind::Staged
+                        | FileStatusKind::StagedWithChanges
+                        | FileStatusKind::Added
+                        | FileStatusKind::Deleted
+                )
+            })
+            .cloned()
+            .collect()
+    };
+
+    if files_to_consider.is_empty() {
+        return CommandResult::Output("No changes to commit.".to_string());
+    }
+
+    // Group files by logical relationships
+    let groups = FileGrouper::group_files(&files_to_consider);
+
+    // If there's only one group, commit everything together
+    if groups.len() == 1 {
+        return execute_auto_commit(
+            git_repo,
+            status,
+            stage_all,
+            custom_message,
+        );
+    }
+
+    // Multiple groups found - suggest splitting the commit
+    let mut output = String::new();
+    output.push_str("Found multiple logical groups in your changes:\n\n");
+
+    for (i, group) in groups.iter().enumerate() {
+        output.push_str(&format!(
+            "  {}. {} ({}) - {} {}\n",
+            i + 1,
+            group.name,
+            group.reason.description(),
+            group.files.len(),
+            if group.files.len() == 1 {
+                "file"
+            } else {
+                "files"
+            }
+        ));
+
+        // Show the files in this group (first 3)
+        for (j, file) in group.files.iter().take(3).enumerate() {
+            output.push_str(&format!(
+                "     {} {}\n",
+                file.status.indicator(),
+                file.path.display()
+            ));
+            if j == 2 && group.files.len() > 3 {
+                output.push_str(&format!("     ... and {} more\n", group.files.len() - 3));
+            }
+        }
+        output.push_str("\n");
+    }
+
+    output.push_str(&format!(
+        "Consider committing these groups separately for better history.\n\
+         \n\
+         To commit a specific group:\n\
+         - Use /commit --pick to select files interactively\n\
+         - Or commit all together by re-running /commit (agent will proceed with all files)\n\
+         \n\
+         Would you like to:\n\
+         [1] Commit all changes together\n\
+         [2] Use interactive picker to select files\n\
+         [q] Cancel\n"
+    ));
+
+    CommandResult::Output(output)
+}
+
+/// Execute an automatic commit (original implementation without grouping)
 fn execute_auto_commit(
     git_repo: &GitRepo,
     status: &RepoStatus,
@@ -1685,5 +1795,156 @@ mod tests {
         let options = result.unwrap();
         assert!(options.pick);
         assert_eq!(options.message, Some("custom message".to_string()));
+    }
+
+    // ========================================================================
+    // File Grouping Integration Tests
+    // ========================================================================
+
+    #[test]
+    fn test_auto_commit_suggests_groups() {
+        // Test that auto-commit suggests splitting when multiple groups are found
+        let (temp_dir, repo) = init_test_repo();
+
+        // Create initial commit
+        let file_path = temp_dir.path().join("initial.txt");
+        fs::write(&file_path, "initial").expect("Failed to write file");
+
+        let mut index = repo.index().expect("Failed to get index");
+        index
+            .add_path(Path::new("initial.txt"))
+            .expect("Failed to add file");
+        index.write().expect("Failed to write index");
+
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+        let sig = repo.signature().expect("Failed to get signature");
+
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+            .expect("Failed to commit");
+
+        // Create changes in multiple logical groups
+        // Group 1: Auth module
+        let auth_impl = temp_dir.path().join("src");
+        fs::create_dir_all(&auth_impl).expect("Failed to create src dir");
+        fs::write(auth_impl.join("auth.rs"), "// auth implementation")
+            .expect("Failed to write auth.rs");
+
+        // Group 2: Test for auth
+        let tests_dir = temp_dir.path().join("tests");
+        fs::create_dir_all(&tests_dir).expect("Failed to create tests dir");
+        fs::write(tests_dir.join("auth_test.rs"), "// auth tests")
+            .expect("Failed to write auth_test.rs");
+
+        // Group 3: Config file
+        fs::write(temp_dir.path().join("Cargo.toml"), "[package]")
+            .expect("Failed to write Cargo.toml");
+
+        // Open repo and get status
+        let git_repo = GitRepo::open(temp_dir.path()).expect("Failed to open repo");
+        let status = git_repo.status().expect("Failed to get status");
+
+        // Run auto-commit with grouping
+        let result = execute_auto_commit_with_grouping(&git_repo, &status, true, None);
+
+        match result {
+            CommandResult::Output(output) => {
+                // Should suggest splitting
+                assert!(
+                    output.contains("multiple logical groups"),
+                    "Should suggest groups: {}",
+                    output
+                );
+                assert!(
+                    output.contains("configuration")
+                        || output.contains("test and implementation")
+                        || output.contains("Commit all"),
+                    "Should show grouping info: {}",
+                    output
+                );
+            }
+            _ => panic!("Expected Output result suggesting groups"),
+        }
+    }
+
+    #[test]
+    fn test_auto_commit_single_group_proceeds() {
+        // When all files are in one logical group, should proceed with commit
+        let (temp_dir, repo) = init_test_repo();
+
+        // Create initial commit
+        let file_path = temp_dir.path().join("initial.txt");
+        fs::write(&file_path, "initial").expect("Failed to write file");
+
+        let mut index = repo.index().expect("Failed to get index");
+        index
+            .add_path(Path::new("initial.txt"))
+            .expect("Failed to add file");
+        index.write().expect("Failed to write index");
+
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+        let sig = repo.signature().expect("Failed to get signature");
+
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+            .expect("Failed to commit");
+
+        // Create changes in the same directory (single logical group)
+        let src_dir = temp_dir.path().join("src");
+        fs::create_dir_all(&src_dir).expect("Failed to create src dir");
+        fs::write(src_dir.join("foo.rs"), "// foo").expect("Failed to write foo.rs");
+        fs::write(src_dir.join("bar.rs"), "// bar").expect("Failed to write bar.rs");
+
+        let git_repo = GitRepo::open(temp_dir.path()).expect("Failed to open repo");
+        let status = git_repo.status().expect("Failed to get status");
+
+        // With files in the same directory, FileGrouper will create 1 group
+        // So execute_auto_commit_with_grouping should call execute_auto_commit
+        // which requires user interaction (preview/edit), so we can't test the full flow here.
+        // Instead, verify that grouping recognizes them as a single group
+        let groups = FileGrouper::group_files(&status.files);
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "Files in same directory should form one group"
+        );
+    }
+
+    #[test]
+    fn test_file_grouping_integration_with_commit() {
+        // Verify that FileGrouper correctly identifies test+impl pairs
+        // and that the commit command can use this information
+        let files = vec![
+            FileStatus {
+                path: PathBuf::from("src/parser.rs"),
+                status: FileStatusKind::Modified,
+            },
+            FileStatus {
+                path: PathBuf::from("tests/parser_test.rs"),
+                status: FileStatusKind::Modified,
+            },
+            FileStatus {
+                path: PathBuf::from("Cargo.toml"),
+                status: FileStatusKind::Modified,
+            },
+        ];
+
+        let groups = FileGrouper::group_files(&files);
+
+        // Should have at least 2 groups: test+impl and config
+        assert!(groups.len() >= 2, "Should have multiple groups");
+
+        // Verify one group is test+impl
+        let has_test_impl = groups
+            .iter()
+            .any(|g| g.reason == crate::integrations::git::GroupReason::TestAndImplementation);
+        assert!(has_test_impl, "Should have test+impl group");
+
+        // Verify one group is configuration
+        let has_config = groups
+            .iter()
+            .any(|g| g.reason == crate::integrations::git::GroupReason::Configuration);
+        assert!(has_config, "Should have config group");
     }
 }

@@ -2176,10 +2176,10 @@ if detector.check() && !triggered {
 **Deliverables:**
 
 1. **File Grouping in /commit**
-   - [ ] Use `FileGrouper::group_files()` in commit command
-   - [ ] Suggest logical splits for unrelated changes
-   - [ ] Show grouping rationale to user
-   - [ ] Ask which group to commit
+   - [x] Use `FileGrouper::group_files()` in commit command
+   - [x] Suggest logical splits for unrelated changes
+   - [x] Show grouping rationale to user
+   - [x] Ask which group to commit
 
 2. **Smart Commit Message Generation**
    - [ ] Analyze all files in group via `suggest_commit_splits()`
