@@ -199,6 +199,44 @@ impl FixAgent {
     /// Create a new fix-agent for the given tool execution result.
     ///
     /// Returns `None` if the error is not auto-fixable (i.e., not a code error).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::agents::{FixAgent, FixAgentConfig};
+    /// use coding_agent_cli::tools::{ToolExecutor, ToolError, ToolExecutionResult};
+    /// use std::time::Duration;
+    ///
+    /// // Simulate a tool execution that failed with a code error
+    /// let result = ToolExecutionResult {
+    ///     tool_name: "cargo_build".to_string(),
+    ///     call_id: "call_1".to_string(),
+    ///     result: Err(ToolError::new("cannot find crate `serde_json`")),
+    ///     duration: Duration::from_millis(100),
+    ///     retries: 0,
+    /// };
+    ///
+    /// // Try to spawn a fix-agent
+    /// if let Some(mut agent) = FixAgent::spawn_with_defaults(result) {
+    ///     println!("Fix-agent spawned with ID: {}", agent.id());
+    ///
+    ///     // Attempt to fix the error
+    ///     let fix_result = agent.attempt_fix(
+    ///         |fix_type, _category| {
+    ///             // Apply fix: add dependency to Cargo.toml
+    ///             Ok(vec!["Cargo.toml".to_string()])
+    ///         },
+    ///         || {
+    ///             // Verify fix: rebuild the project
+    ///             Ok(())
+    ///         }
+    ///     );
+    ///
+    ///     if fix_result.is_success() {
+    ///         println!("Successfully fixed after {} attempts", fix_result.attempt_count());
+    ///     }
+    /// }
+    /// ```
     pub fn spawn(result: ToolExecutionResult, config: FixAgentConfig) -> Option<Self> {
         // Only spawn for auto-fixable errors
         let error = result.error()?.clone();

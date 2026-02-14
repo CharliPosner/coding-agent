@@ -313,6 +313,27 @@ impl SessionManager {
     }
 
     /// Save a session to disk
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::integrations::specstory::{SessionManager, Session, MessageRole};
+    /// use std::path::PathBuf;
+    ///
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let manager = SessionManager::new(PathBuf::from(".specstory/history"));
+    ///
+    /// // Create a new session
+    /// let mut session = Session::with_model("claude-3-opus");
+    /// session.add_user_message("How do I implement a binary search tree?");
+    /// session.add_agent_message("Here's a binary search tree implementation...");
+    ///
+    /// // Save to disk
+    /// let file_path = manager.save(&mut session)?;
+    /// println!("Session saved to: {}", file_path.display());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn save(&self, session: &mut Session) -> Result<PathBuf, SpecStoryError> {
         self.ensure_dir()?;
 
@@ -339,6 +360,26 @@ impl SessionManager {
     }
 
     /// Load a session from a specific path
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::integrations::specstory::SessionManager;
+    /// use std::path::{Path, PathBuf};
+    ///
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let manager = SessionManager::new(PathBuf::from(".specstory/history"));
+    ///
+    /// // Load an existing session
+    /// let session = manager.load_from_path(
+    ///     Path::new(".specstory/history/2024-01-15_10-30-00_binary-search.md")
+    /// )?;
+    ///
+    /// println!("Loaded session: {}", session.metadata.title);
+    /// println!("Messages: {}", session.message_count());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn load_from_path(&self, path: &Path) -> Result<Session, SpecStoryError> {
         let content = fs::read_to_string(path).map_err(SpecStoryError::ReadError)?;
         let mut session = Session::from_markdown(&content)?;

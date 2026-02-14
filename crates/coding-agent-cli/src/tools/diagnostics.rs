@@ -308,6 +308,34 @@ impl std::fmt::Display for CompilerType {
 }
 
 /// Parse compiler output into structured diagnostics.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use coding_agent_cli::tools::parse_compiler_output;
+///
+/// let cargo_output = r#"
+/// error[E0463]: can't find crate for `serde_json`
+///  --> src/main.rs:1:5
+///   |
+/// 1 | use serde_json;
+///   |     ^^^^^^^^^^ help: you might be missing crate `serde_json`
+/// "#;
+///
+/// let report = parse_compiler_output(cargo_output);
+///
+/// println!("Compiler: {}", report.compiler);
+/// println!("Errors: {}", report.error_count);
+///
+/// for error in report.errors() {
+///     if let Some(code) = &error.code {
+///         println!("Error {}: {}", code, error.message);
+///     }
+///     if let Some(file) = error.file_path() {
+///         println!("  at {}:{}", file, error.line().unwrap_or(0));
+///     }
+/// }
+/// ```
 pub fn parse_compiler_output(output: &str) -> DiagnosticReport {
     // Try to detect the compiler type
     let compiler = detect_compiler(output);

@@ -42,6 +42,36 @@ impl StatusBar {
     /// Renders the status bar to stdout.
     ///
     /// Returns the number of lines rendered.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::ui::StatusBar;
+    /// use coding_agent_cli::agents::status::{AgentStatus, AgentState, AgentId};
+    ///
+    /// let status_bar = StatusBar::new();
+    ///
+    /// let agents = vec![
+    ///     AgentStatus {
+    ///         id: AgentId(1),
+    ///         name: "fix-agent".to_string(),
+    ///         description: "Fixing missing dependency".to_string(),
+    ///         state: AgentState::Running,
+    ///         progress: 65,
+    ///     },
+    ///     AgentStatus {
+    ///         id: AgentId(2),
+    ///         name: "test-runner".to_string(),
+    ///         description: "Running test suite".to_string(),
+    ///         state: AgentState::Running,
+    ///         progress: 40,
+    ///     },
+    /// ];
+    ///
+    /// // Render status bar to show agent progress
+    /// let lines = status_bar.render(&agents).unwrap();
+    /// println!("Rendered {} lines", lines);
+    /// ```
     pub fn render(&self, agents: &[AgentStatus]) -> io::Result<usize> {
         if agents.is_empty() {
             return Ok(0);

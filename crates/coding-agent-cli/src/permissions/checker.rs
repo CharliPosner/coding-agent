@@ -123,6 +123,24 @@ impl PermissionChecker {
     /// - `Allowed` if the path is trusted or user previously approved "always"
     /// - `Denied` if user previously chose "never" for this path
     /// - `NeedsPrompt` if user confirmation is required
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::permissions::{PermissionChecker, TrustedPaths, OperationType};
+    /// use std::path::Path;
+    ///
+    /// let trusted = TrustedPaths::new(&["/home/user/project".to_string()]).unwrap();
+    /// let checker = PermissionChecker::new(trusted, true);
+    ///
+    /// // Trusted path - allowed immediately
+    /// let decision = checker.check(Path::new("/home/user/project/src/main.rs"), OperationType::Write);
+    /// // => PermissionDecision::Allowed
+    ///
+    /// // Untrusted path - needs prompt
+    /// let decision = checker.check(Path::new("/etc/passwd"), OperationType::Write);
+    /// // => PermissionDecision::NeedsPrompt
+    /// ```
     pub fn check(&self, path: &Path, operation: OperationType) -> PermissionDecision {
         // Read operations are always allowed (per spec)
         if operation == OperationType::Read && self.auto_read {
@@ -146,6 +164,25 @@ impl PermissionChecker {
     /// Record a user's permission decision for the session
     ///
     /// This is called after the user responds to a permission prompt.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::permissions::{PermissionChecker, TrustedPaths, OperationType, PermissionDecision};
+    /// use std::path::Path;
+    ///
+    /// let trusted = TrustedPaths::new(&[]).unwrap();
+    /// let mut checker = PermissionChecker::new(trusted, true);
+    ///
+    /// let path = Path::new("/tmp/test.txt");
+    ///
+    /// // User responded "always" to the prompt
+    /// checker.record_decision(path, OperationType::Write, PermissionDecision::Allowed);
+    ///
+    /// // Next check will use cached decision
+    /// let decision = checker.check(path, OperationType::Write);
+    /// assert_eq!(decision, PermissionDecision::Allowed);
+    /// ```
     pub fn record_decision(
         &mut self,
         path: &Path,

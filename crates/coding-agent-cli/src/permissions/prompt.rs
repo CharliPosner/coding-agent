@@ -49,6 +49,24 @@ impl PermissionPrompt {
     /// ```
     ///
     /// Returns the user's choice.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::permissions::{PermissionPrompt, OperationType, PermissionResponse};
+    /// use std::path::Path;
+    ///
+    /// let prompt = PermissionPrompt::default_theme();
+    ///
+    /// // Prompt user for write permission
+    /// match prompt.prompt(Path::new("/tmp/file.txt"), OperationType::Write) {
+    ///     Ok(PermissionResponse::Yes) => println!("Allowed once"),
+    ///     Ok(PermissionResponse::Always) => println!("Allowed and add to trusted"),
+    ///     Ok(PermissionResponse::No) => println!("Denied once"),
+    ///     Ok(PermissionResponse::Never) => println!("Denied for this session"),
+    ///     Err(e) => eprintln!("Error: {}", e),
+    /// }
+    /// ```
     pub fn prompt(&self, path: &Path, operation: OperationType) -> io::Result<PermissionResponse> {
         // Display the permission request
         let warning = self.theme.apply(Color::Warning, "⚠ Permission required");

@@ -153,6 +153,25 @@ impl ContextBar {
     /// Render the context bar as a styled string.
     ///
     /// Output format: "Context: [████████████░░░░░░░░░░░░░░░░░░]  38% used | 76k / 200k tokens"
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::ui::ContextBar;
+    ///
+    /// let mut bar = ContextBar::new(200_000);
+    /// bar.set_tokens(76_000);
+    ///
+    /// // Render the context bar
+    /// let output = bar.render();
+    /// println!("{}", output);
+    /// // => "Context: [████████████░░░░░░░░░░░░░░░░░░]  38% used | 76k / 200k tokens"
+    ///
+    /// // Check usage level
+    /// if bar.percent() > 80 {
+    ///     eprintln!("Warning: Context usage is high!");
+    /// }
+    /// ```
     pub fn render(&self) -> String {
         let bar = self.render_bar();
         let color = self.usage_color();

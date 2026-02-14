@@ -364,6 +364,31 @@ pub fn is_git_repository<P: AsRef<Path>>(path: P) -> bool {
 }
 
 /// Get the status of a repository at the given path
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use coding_agent_cli::integrations::git::get_status;
+///
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// // Get git status of current directory
+/// let status = get_status(".")?;
+///
+/// println!("Branch: {:?}", status.branch);
+/// println!("Clean: {}", status.is_clean());
+///
+/// // Show modified files
+/// for file in status.modified_files() {
+///     println!("Modified: {}", file.path.display());
+/// }
+///
+/// // Show staged files
+/// for file in status.staged_files() {
+///     println!("Staged: {}", file.path.display());
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub fn get_status<P: AsRef<Path>>(path: P) -> Result<RepoStatus, GitError> {
     let repo = GitRepo::open(path)?;
     repo.status()

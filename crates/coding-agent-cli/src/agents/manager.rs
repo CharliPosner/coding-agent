@@ -72,6 +72,31 @@ impl AgentManager {
     /// Spawns a new agent with the given name, description, and task.
     ///
     /// Returns the agent ID.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::agents::AgentManager;
+    ///
+    /// # async fn example() {
+    /// let manager = AgentManager::new();
+    ///
+    /// // Spawn an agent to perform a background task
+    /// let agent_id = manager.spawn(
+    ///     "file-processor".to_string(),
+    ///     "Processing large file".to_string(),
+    ///     || {
+    ///         // Do some work
+    ///         std::thread::sleep(std::time::Duration::from_secs(1));
+    ///         Ok("Processed 1000 lines".to_string())
+    ///     }
+    /// );
+    ///
+    /// // Wait for completion
+    /// let result = manager.wait(agent_id).await;
+    /// println!("Agent result: {:?}", result);
+    /// # }
+    /// ```
     pub fn spawn<F>(&self, name: String, description: String, task: F) -> AgentId
     where
         F: FnOnce() -> Result<String, String> + Send + 'static,

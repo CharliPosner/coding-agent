@@ -235,6 +235,35 @@ impl ToolExecutor {
     /// 2. Execute it with the provided input
     /// 3. Categorize any errors
     /// 4. Retry transient errors with exponential backoff
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::tools::ToolExecutor;
+    /// use serde_json::{json, Value};
+    ///
+    /// let mut executor = ToolExecutor::with_defaults();
+    ///
+    /// // Register a tool
+    /// fn read_file(input: Value) -> Result<String, String> {
+    ///     let path = input["path"].as_str().ok_or("Missing path")?;
+    ///     std::fs::read_to_string(path).map_err(|e| e.to_string())
+    /// }
+    /// executor.register_tool("read_file", read_file);
+    ///
+    /// // Execute with automatic retry on transient errors
+    /// let result = executor.execute(
+    ///     "call_123",
+    ///     "read_file",
+    ///     json!({"path": "/tmp/example.txt"})
+    /// );
+    ///
+    /// if result.is_success() {
+    ///     println!("File contents: {}", result.result.unwrap());
+    /// } else if result.is_auto_fixable() {
+    ///     println!("Error can be auto-fixed by fix-agent");
+    /// }
+    /// ```
     pub fn execute(
         &self,
         call_id: impl Into<String>,
@@ -322,6 +351,21 @@ impl Default for ToolExecutor {
 }
 
 /// Categorize an error message into an ErrorCategory.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// # use coding_agent_cli::tools::{ToolError, ErrorCategory};
+/// // Automatically categorizes different error types
+/// let error = ToolError::new("cannot find crate `serde_json`");
+/// // => ErrorCategory::Code { error_type: "missing_dependency" }
+///
+/// let error = ToolError::new("Permission denied: '/etc/passwd'");
+/// // => ErrorCategory::Permission { resource: "/etc/passwd" }
+///
+/// let error = ToolError::new("Connection timed out");
+/// // => ErrorCategory::Network { is_transient: true }
+/// ```
 fn categorize_error(message: &str) -> (ErrorCategory, bool, Option<String>) {
     let lower = message.to_lowercase();
 

@@ -48,7 +48,7 @@ pub trait Command: Send + Sync {
     /// Short description for the help listing
     fn description(&self) -> &'static str;
 
-    /// Usage string (e.g., "/command [args]")
+    /// Usage string (e.g., "/command \[args\]")
     fn usage(&self) -> &'static str {
         self.name()
     }

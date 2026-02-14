@@ -118,6 +118,174 @@ This spec captures transferable lessons from two production coding agent archite
 
 ## Prioritized Improvements
 
+### Phase 0: PostToolsHook Infrastructure
+
+**Priority:** Foundational — enables Phases A, B, and D features
+
+**Why this matters:** Currently, when tools complete, the state machine immediately transitions to `CallingLlm`. This leaves no hook point for quality gates, context checking, progress tracking, or session management. Loom's architecture includes a `PostToolsHook` state specifically for this purpose.
+
+**Current flow:**
+```
+ExecutingTools → [all done] → CallingLlm
+```
+
+**New flow:**
+```
+ExecutingTools → [all done] → PostToolsHook → [hooks complete] → CallingLlm
+```
+
+#### 0.1 State Machine Changes
+
+**Location:** `crates/coding-agent-core/src/state.rs`
+
+Add new state:
+```rust
+/// Post-tool-execution hook point for quality gates, context checks, etc.
+PostToolsHook {
+    conversation: Vec<Message>,
+    pending_tool_results: Vec<Message>,  // Tool results ready to send
+}
+```
+
+Add new event:
+```rust
+/// Post-tool hooks have completed
+HooksCompleted {
+    proceed: bool,  // false = stop loop, wait for user input
+    warning: Option<String>,  // Optional warning to display
+}
+```
+
+Add new actions:
+```rust
+/// Run post-tool hooks (caller decides what to run)
+RunPostToolsHooks {
+    tool_names: Vec<String>,  // Which tools just executed
+}
+
+/// Display a warning to the user (non-blocking)
+DisplayWarning(String),
+```
+
+**Location:** `crates/coding-agent-core/src/machine.rs`
+
+Change the "all tools done" branch (currently lines 170-197):
+
+```rust
+if all_done {
+    // Build tool result messages (existing code)
+    let mut tool_result_messages = Vec::new();
+    for exec in &execs {
+        // ... build messages ...
+    }
+
+    // Collect tool names for hook decision
+    let tool_names: Vec<String> = execs.iter()
+        .filter_map(|e| match e {
+            ToolExecutionStatus::Completed { .. } => None,
+            ToolExecutionStatus::Pending { tool_name, .. } => Some(tool_name.clone()),
+            ToolExecutionStatus::Running { tool_name, .. } => Some(tool_name.clone()),
+        })
+        .collect();
+
+    // NEW: Transition to PostToolsHook instead of CallingLlm
+    self.state = AgentState::PostToolsHook {
+        conversation: conversation.clone(),
+        pending_tool_results: tool_result_messages,
+    };
+
+    AgentAction::RunPostToolsHooks { tool_names }
+}
+```
+
+Add new transition handler:
+```rust
+// === PostToolsHook ===
+(
+    AgentState::PostToolsHook {
+        conversation,
+        pending_tool_results,
+    },
+    AgentEvent::HooksCompleted { proceed, warning },
+) => {
+    // Display warning if present
+    let display_action = warning.map(|w| AgentAction::DisplayWarning(w));
+
+    if proceed {
+        // Continue to LLM with tool results
+        let mut conv = conversation.clone();
+        conv.extend(pending_tool_results.clone());
+
+        self.state = AgentState::CallingLlm {
+            conversation: conv.clone(),
+            retries: 0,
+        };
+
+        // If there's a warning, caller handles both actions
+        display_action.unwrap_or(AgentAction::SendLlmRequest { messages: conv })
+    } else {
+        // Stop loop, return to user
+        self.state = AgentState::WaitingForUserInput {
+            conversation: conversation.clone(),
+        };
+
+        display_action.unwrap_or(AgentAction::PromptForInput)
+    }
+}
+```
+
+#### 0.2 Minimal Hook Implementation (REPL)
+
+**Location:** `crates/coding-agent-cli/src/cli/repl.rs`
+
+The REPL handles `RunPostToolsHooks` by checking context budget:
+
+```rust
+AgentAction::RunPostToolsHooks { tool_names } => {
+    // Minimal implementation: just check context budget
+    let usage_percent = self.token_counter.usage_percentage();
+
+    let (proceed, warning) = if usage_percent >= 70.0 {
+        (true, Some(format!(
+            "⚠ Context at {:.0}% — consider /clear or /land soon",
+            usage_percent
+        )))
+    } else if usage_percent >= 60.0 {
+        (true, Some(format!(
+            "⚠ Context at {:.0}% — approaching limit",
+            usage_percent
+        )))
+    } else {
+        (true, None)
+    };
+
+    // Send HooksCompleted back to state machine
+    let action = self.machine.handle_event(AgentEvent::HooksCompleted {
+        proceed,
+        warning,
+    });
+
+    self.handle_action(action).await?;
+}
+```
+
+#### 0.3 Future Hook Expansion
+
+Once the infrastructure exists, the REPL can add more sophisticated hooks:
+
+| Hook | Trigger | Action |
+|------|---------|--------|
+| Context warning | Always | Check token budget, warn at 60%/70% |
+| Lint check | After `edit_file` | Run `cargo clippy`, show errors |
+| Test check | After `edit_file` | Run `cargo test`, show failures |
+| Auto-format | After `edit_file` | Run `cargo fmt` |
+| Progress update | After any tool | Write to `.coding-agent/progress.json` |
+| Auto-commit | After edit + tests pass | `git add && git commit` |
+
+These are configured per-project or via CLI flags, not hardcoded.
+
+---
+
 ### Phase A: Context Intelligence
 
 **Priority:** Immediate — high value, low effort
@@ -130,7 +298,11 @@ This spec captures transferable lessons from two production coding agent archite
 
 #### A.1 Smart Zone Warning
 
-**Location:** `src/ui/context_bar.rs`
+**Prerequisite:** Phase 0 (PostToolsHook)
+
+**Note:** The minimal PostToolsHook (Phase 0.2) already provides context warnings after tool execution. This phase adds visual warnings to the context bar for continuous visibility.
+
+**Location:** `crates/coding-agent-cli/src/ui/context_bar.rs`
 
 ```text
 Current:
@@ -150,6 +322,7 @@ Enhanced (>70%):
 - Add threshold constants: `SMART_ZONE_WARNING = 60`, `SMART_ZONE_CRITICAL = 70`
 - In `ContextBar::render()`, check percentage and append warning text
 - Use yellow for warning (60-70%), red for critical (>70%)
+- This complements the PostToolsHook warning (which fires after tools) with always-visible status
 
 #### A.2 Session Scope Guidance
 
@@ -183,6 +356,8 @@ Enhanced (>70%):
 #### B.1 The `/land` Command (Interactive Mode)
 
 > "When you tell the agent 'land the plane,' it executes a scripted checklist to safely close the session." — Yegge
+
+**Prerequisite:** Phase 0 (PostToolsHook) — The quality gate infrastructure (test/lint) can reuse the hook machinery.
 
 **Command:** `/land`
 
@@ -693,14 +868,17 @@ git branch | grep "phase-" | xargs git branch -D
 
 **Recommended sequence:**
 
-1. **A.1** Smart zone warning — 1 file change, immediate value
-2. **B.1** `/land` command — Core session management
-3. **B.2** Automation enhancements — Improve existing workflow
-4. **A.2** Session scope guidance — Polish
-5. **B.3** Session-start onboarding — Ties together
-6. **C.1** Task tracking — When markdown files become unwieldy
-7. **D.1-D.3** Autonomous enhancements — When single-agent is mastered
-8. **D.4** Parallel worktrees — When phases are independent and you want speed
+1. **0.1-0.2** PostToolsHook infrastructure — Foundational, enables everything else
+2. **A.1** Smart zone warning — Now trivial (hook already checks budget)
+3. **B.1** `/land` command — Core session management
+4. **B.2** Automation enhancements — Improve existing workflow
+5. **A.2** Session scope guidance — Polish
+6. **B.3** Session-start onboarding — Ties together
+7. **C.1** Task tracking — When markdown files become unwieldy
+8. **D.1-D.3** Autonomous enhancements — When single-agent is mastered
+9. **D.4** Parallel worktrees — When phases are independent and you want speed
+
+**Note:** Once Phase 0 is complete, A.1 (Smart zone warning) is essentially done — the PostToolsHook minimal implementation already provides context warnings at 60%/70%.
 
 ---
 
