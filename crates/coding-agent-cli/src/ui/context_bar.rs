@@ -431,4 +431,39 @@ mod tests {
         bar.add_tokens(100); // Would overflow
         assert_eq!(bar.current_tokens(), u64::MAX); // Saturated
     }
+
+    // Bug 1 tests
+    #[test]
+    fn test_context_bar_empty_shows_empty() {
+        let bar = ContextBar::new(200_000);
+        let rendered = bar.render_bar();
+        // At 0 tokens, all characters should be empty (░)
+        assert_eq!(rendered.chars().filter(|&c| c == '█').count(), 0);
+        assert_eq!(rendered.chars().filter(|&c| c == '░').count(), 30);
+        assert_eq!(bar.percent(), 0);
+    }
+
+    #[test]
+    fn test_context_bar_full_shows_full() {
+        let mut bar = ContextBar::new(200_000);
+        bar.set_tokens(200_000);
+        let rendered = bar.render_bar();
+        // At 100%, all characters should be filled (█)
+        assert_eq!(rendered.chars().filter(|&c| c == '█').count(), 30);
+        assert_eq!(rendered.chars().filter(|&c| c == '░').count(), 0);
+        assert_eq!(bar.percent(), 100);
+    }
+
+    #[test]
+    fn test_context_bar_percentage_matches_visual() {
+        let mut bar = ContextBar::new(100);
+        bar.set_bar_width(10);
+
+        // 50% usage
+        bar.set_tokens(50);
+        let rendered = bar.render_bar();
+        assert_eq!(bar.percent(), 50);
+        assert_eq!(rendered.chars().filter(|&c| c == '█').count(), 5);  // Half filled
+        assert_eq!(rendered.chars().filter(|&c| c == '░').count(), 5);  // Half empty
+    }
 }

@@ -1627,6 +1627,45 @@ mod tests {
     }
 
     #[test]
+    fn test_context_bar_updates_on_exchange() {
+        let mut repl = Repl::new(ReplConfig::default());
+
+        // Initial state - should be at 0%
+        assert_eq!(repl.context_bar().current_tokens(), 0);
+        assert_eq!(repl.context_bar().percent(), 0);
+
+        // Simulate a user message
+        let user_msg = "What is the capital of France?";
+        repl.update_context_tokens("user", user_msg);
+
+        let tokens_after_user = repl.context_bar().current_tokens();
+        let percent_after_user = repl.context_bar().percent();
+
+        assert!(tokens_after_user > 0, "User message should add tokens");
+        assert!(percent_after_user < 100, "Should not be at 100% yet");
+
+        // Simulate an assistant response
+        let assistant_msg = "The capital of France is Paris. It's known for the Eiffel Tower, Louvre Museum, and beautiful architecture.";
+        repl.update_context_tokens("assistant", assistant_msg);
+
+        let tokens_after_assistant = repl.context_bar().current_tokens();
+        let percent_after_assistant = repl.context_bar().percent();
+
+        assert!(
+            tokens_after_assistant > tokens_after_user,
+            "Assistant message should add more tokens"
+        );
+        assert!(
+            percent_after_assistant >= percent_after_user,
+            "Percentage should increase or stay the same"
+        );
+
+        // Verify bar rendering reflects the accumulated tokens
+        let rendered = repl.context_bar().render();
+        assert!(rendered.contains(&format!("{}%", percent_after_assistant)));
+    }
+
+    #[test]
     fn test_show_context_bar_config() {
         // Test with context bar enabled (default)
         let config_enabled = ReplConfig {
