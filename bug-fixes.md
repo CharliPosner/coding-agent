@@ -1,10 +1,12 @@
 # Bug Fixes
 
-Iterative bug fix list. Work through each bug in order.
+Iterative bug fix list. Work through each deliverable in order.
+
+Each deliverable contains multiple checklist items that should be completed together.
 
 ---
 
-## Bug 1: Context Bar Display Mismatch
+## Deliverable 1: Context Bar Display Mismatch
 **Priority**: High
 **Files**: `crates/coding-agent-cli/src/ui/context_bar.rs`, `crates/coding-agent-cli/src/cli/repl.rs`
 
@@ -43,7 +45,7 @@ Iterative bug fix list. Work through each bug in order.
 
 ---
 
-## Bug 2: Read Tool Output Not Collapsible
+## Deliverable 2: Read Tool Output Not Collapsible
 **Priority**: Medium
 **Files**: `crates/coding-agent-cli/src/ui/tool_result.rs`
 
@@ -75,18 +77,18 @@ Iterative bug fix list. Work through each bug in order.
 
 ---
 
-## Bug 3: Code Blocks Need Syntax Highlighting
+## Deliverable 3: Code Blocks Need Syntax Highlighting
 **Priority**: Medium
 **Files**: `crates/coding-agent-cli/src/ui/markdown.rs`, `crates/coding-agent-cli/Cargo.toml`
 
 **Symptoms**: Code blocks render in solid green. No syntax highlighting for keywords, strings, comments.
 
 ### Checklist
-- [ ] Add `syntect` dependency to Cargo.toml
-- [ ] Parse language from markdown fence (```rust, ```python, etc.)
-- [ ] Load syntax definitions for common languages
-- [ ] Apply syntax-aware coloring in code block rendering
-- [ ] Fallback to plain green for unknown languages
+- [x] Add `syntect` dependency to Cargo.toml
+- [x] Parse language from markdown fence (```rust, ```python, etc.)
+- [x] Load syntax definitions for common languages
+- [x] Apply syntax-aware coloring in code block rendering
+- [x] Fallback to plain green for unknown languages
 
 ### Tests
 
@@ -109,7 +111,7 @@ Iterative bug fix list. Work through each bug in order.
 
 ---
 
-## Bug 4: Maximum Tool Iterations Limit Too Low
+## Deliverable 4: Maximum Tool Iterations Limit Too Low
 **Priority**: Low
 **Files**: `crates/coding-agent-cli/src/cli/repl.rs`, `crates/coding-agent-cli/src/config/settings.rs`
 
@@ -118,11 +120,11 @@ Iterative bug fix list. Work through each bug in order.
 **Current**: Hardcoded `MAX_TOOL_ITERATIONS: usize = 10` (line ~389)
 
 ### Checklist
-- [ ] Increase default limit to 50
-- [ ] Add `max_tool_iterations` to `BehaviorConfig` in settings.rs
-- [ ] Read config value in `process_conversation()`
-- [ ] Add iteration counter display during execution (e.g., "Tool call 5/50")
-- [ ] Warn user at 80% of limit before hard stop
+- [x] Increase default limit to 50
+- [x] Add `max_tool_iterations` to `BehaviorConfig` in settings.rs
+- [x] Read config value in `process_conversation()`
+- [x] Add iteration counter display during execution (e.g., "Tool call 5/50")
+- [x] Warn user at 80% of limit before hard stop
 
 ### Tests
 
@@ -143,7 +145,7 @@ Iterative bug fix list. Work through each bug in order.
 
 ---
 
-## Bug 5: H1 Header Dark Blue Has Poor Contrast
+## Deliverable 5: H1 Header Dark Blue Has Poor Contrast
 **Priority**: Low
 **Files**: `crates/coding-agent-cli/src/ui/markdown.rs`
 
