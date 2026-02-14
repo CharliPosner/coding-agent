@@ -32,10 +32,17 @@ impl MarkdownRenderer {
         let mut skin = MadSkin::default();
 
         // Customize colors for better readability
-        // Headers - cyan/blue gradient
-        skin.headers[0].set_fg(Color::Cyan);
-        skin.headers[1].set_fg(Color::Blue);
-        skin.headers[2].set_fg(Color::DarkCyan);
+        // Headers - bright to darker gradient for clear hierarchy
+        // h1: Bright cyan for maximum visibility against dark backgrounds
+        // h2: Standard cyan (dimmer than h1)
+        // h3: Dark cyan (dimmest)
+        skin.headers[0].set_fg(Color::Rgb {
+            r: 0,
+            g: 255,
+            b: 255,
+        }); // Bright cyan
+        skin.headers[1].set_fg(Color::Cyan); // Standard cyan
+        skin.headers[2].set_fg(Color::DarkCyan); // Dark cyan
 
         // Bold text - white/bright
         skin.bold.set_fg(Color::White);
@@ -307,5 +314,45 @@ let s = "hello";
 
         // Should fallback to green since no language specified
         assert!(output.contains("\x1b[32m"));
+    }
+
+    #[test]
+    fn test_h1_uses_bright_color() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "# Top Level Header";
+        let output = renderer.render(markdown);
+
+        // Should contain the header text
+        assert!(output.contains("Top Level Header"));
+
+        // Should contain RGB color codes for bright cyan (0, 255, 255)
+        // The RGB color code format is: \x1b[38;2;<r>;<g>;<b>m
+        assert!(
+            output.contains("\x1b[38;2;0;255;255m"),
+            "H1 should use bright cyan RGB color"
+        );
+    }
+
+    #[test]
+    fn test_header_hierarchy() {
+        let renderer = MarkdownRenderer::new();
+        let markdown = "# H1\n## H2\n### H3";
+        let output = renderer.render(markdown);
+
+        // All headers should be present
+        assert!(output.contains("H1"));
+        assert!(output.contains("H2"));
+        assert!(output.contains("H3"));
+
+        // H1 should use bright cyan (RGB: 0, 255, 255)
+        assert!(
+            output.contains("\x1b[38;2;0;255;255m"),
+            "H1 should be brightest (bright cyan RGB)"
+        );
+
+        // H2 and H3 use named colors (Cyan and DarkCyan) which termimad
+        // renders with basic ANSI codes, not RGB codes
+        // We can verify the hierarchy visually, but can't easily assert
+        // specific codes here without accessing termimad's internal rendering
     }
 }
