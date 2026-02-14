@@ -121,7 +121,7 @@ impl ContextBar {
 
     /// Render the progress bar portion as a string.
     ///
-    /// Returns a string like "████████████░░░░░░░░░░░░░░░░░░"
+    /// Returns a string like "============------------------"
     fn render_bar(&self) -> String {
         let filled = if self.max_tokens == 0 {
             0
@@ -131,8 +131,8 @@ impl ContextBar {
         let filled = filled.min(self.bar_width);
         let empty = self.bar_width - filled;
 
-        let filled_char = '█';
-        let empty_char = '░';
+        let filled_char = '=';
+        let empty_char = '-';
 
         format!(
             "{}{}",
@@ -345,20 +345,20 @@ mod tests {
         // 0%
         bar.set_tokens(0);
         let rendered = bar.render_bar();
-        assert_eq!(rendered.chars().filter(|&c| c == '█').count(), 0);
-        assert_eq!(rendered.chars().filter(|&c| c == '░').count(), 10);
+        assert_eq!(rendered.chars().filter(|&c| c == '=').count(), 0);
+        assert_eq!(rendered.chars().filter(|&c| c == '-').count(), 10);
 
         // 50%
         bar.set_tokens(50);
         let rendered = bar.render_bar();
-        assert_eq!(rendered.chars().filter(|&c| c == '█').count(), 5);
-        assert_eq!(rendered.chars().filter(|&c| c == '░').count(), 5);
+        assert_eq!(rendered.chars().filter(|&c| c == '=').count(), 5);
+        assert_eq!(rendered.chars().filter(|&c| c == '-').count(), 5);
 
         // 100%
         bar.set_tokens(100);
         let rendered = bar.render_bar();
-        assert_eq!(rendered.chars().filter(|&c| c == '█').count(), 10);
-        assert_eq!(rendered.chars().filter(|&c| c == '░').count(), 0);
+        assert_eq!(rendered.chars().filter(|&c| c == '=').count(), 10);
+        assert_eq!(rendered.chars().filter(|&c| c == '-').count(), 0);
     }
 
     #[test]
@@ -437,9 +437,9 @@ mod tests {
     fn test_context_bar_empty_shows_empty() {
         let bar = ContextBar::new(200_000);
         let rendered = bar.render_bar();
-        // At 0 tokens, all characters should be empty (░)
-        assert_eq!(rendered.chars().filter(|&c| c == '█').count(), 0);
-        assert_eq!(rendered.chars().filter(|&c| c == '░').count(), 30);
+        // At 0 tokens, all characters should be empty (-)
+        assert_eq!(rendered.chars().filter(|&c| c == '=').count(), 0);
+        assert_eq!(rendered.chars().filter(|&c| c == '-').count(), 30);
         assert_eq!(bar.percent(), 0);
     }
 
@@ -448,9 +448,9 @@ mod tests {
         let mut bar = ContextBar::new(200_000);
         bar.set_tokens(200_000);
         let rendered = bar.render_bar();
-        // At 100%, all characters should be filled (█)
-        assert_eq!(rendered.chars().filter(|&c| c == '█').count(), 30);
-        assert_eq!(rendered.chars().filter(|&c| c == '░').count(), 0);
+        // At 100%, all characters should be filled (=)
+        assert_eq!(rendered.chars().filter(|&c| c == '=').count(), 30);
+        assert_eq!(rendered.chars().filter(|&c| c == '-').count(), 0);
         assert_eq!(bar.percent(), 100);
     }
 
@@ -463,7 +463,32 @@ mod tests {
         bar.set_tokens(50);
         let rendered = bar.render_bar();
         assert_eq!(bar.percent(), 50);
-        assert_eq!(rendered.chars().filter(|&c| c == '█').count(), 5);  // Half filled
-        assert_eq!(rendered.chars().filter(|&c| c == '░').count(), 5);  // Half empty
+        assert_eq!(rendered.chars().filter(|&c| c == '=').count(), 5);  // Half filled
+        assert_eq!(rendered.chars().filter(|&c| c == '-').count(), 5);  // Half empty
+    }
+
+    #[test]
+    fn test_context_bar_debug_low_usage() {
+        // Test exactly what the user is seeing: 87 tokens out of 200k
+        let mut bar = ContextBar::new(200_000);
+        bar.set_tokens(87);
+
+        let bar_str = bar.render_bar();
+        let percent = bar.percent();
+        let full_render = bar.render();
+
+        eprintln!("\n=== DEBUG: Low usage (87 / 200k) ===");
+        eprintln!("Percent: {}%", percent);
+        eprintln!("Bar string: '{}'", bar_str);
+        eprintln!("Bar length: {}", bar_str.len());
+        eprintln!("Filled = count: {}", bar_str.chars().filter(|&c| c == '=').count());
+        eprintln!("Empty - count: {}", bar_str.chars().filter(|&c| c == '-').count());
+        eprintln!("Full render: {}", full_render);
+        eprintln!("================\n");
+
+        // With 87 tokens out of 200k, this should be 0% and have 0 filled chars
+        assert_eq!(percent, 0);
+        assert_eq!(bar_str.chars().filter(|&c| c == '=').count(), 0);
+        assert_eq!(bar_str.chars().filter(|&c| c == '-').count(), 30);
     }
 }
