@@ -77,12 +77,7 @@ impl ToolResultFormatter {
     /// Format a tool result with collapsible support
     pub fn format_result_collapsible(&self, tool_name: &str, output: &str) -> FormattedResult {
         match tool_name {
-            "read_file" => FormattedResult {
-                display: self.format_file_content(output),
-                collapsed_content: None,
-                collapsed_count: 0,
-                tool_name: tool_name.to_string(),
-            },
+            "read_file" => self.format_read_file_collapsible(output, tool_name),
             "write_file" => FormattedResult {
                 display: self.format_write_result(output),
                 collapsed_content: None,
@@ -198,6 +193,43 @@ impl ToolResultFormatter {
         }
 
         result
+    }
+
+    /// Format read file with collapsible support
+    fn format_read_file_collapsible(&self, output: &str, tool_name: &str) -> FormattedResult {
+        let lines: Vec<&str> = output.lines().collect();
+        let total_lines = lines.len();
+        let threshold = self.config.collapse_threshold;
+
+        // If under threshold or collapsing disabled, show full content
+        if threshold == 0 || total_lines <= threshold {
+            return FormattedResult {
+                display: self.format_file_content(output),
+                collapsed_content: None,
+                collapsed_count: 0,
+                tool_name: tool_name.to_string(),
+            };
+        }
+
+        // Collapse: show summary only
+        let display = format!(
+            "  {} {}\r\n",
+            self.theme.apply(Color::Muted, "▸"),
+            self.theme.apply(
+                Color::Muted,
+                &format!("({} lines, use /results to expand)", total_lines)
+            )
+        );
+
+        // Store full formatted content for later viewing
+        let full_output = self.format_file_content(output);
+
+        FormattedResult {
+            display,
+            collapsed_content: Some(full_output),
+            collapsed_count: total_lines,
+            tool_name: tool_name.to_string(),
+        }
     }
 
     /// Format write result
@@ -836,5 +868,52 @@ mod tests {
         let result = formatter.format_result_collapsible("code_search", "No matches found");
 
         assert_eq!(result.tool_name, "code_search");
+    }
+
+    #[test]
+    fn test_read_small_file_not_collapsed() {
+        // With default threshold of 5, 3 lines should NOT collapse
+        let formatter = ToolResultFormatter::new();
+        let content = "line 1\nline 2\nline 3";
+        let result = formatter.format_result_collapsible("read_file", content);
+
+        assert!(result.collapsed_content.is_none());
+        assert_eq!(result.collapsed_count, 0);
+        assert!(result.display.contains("3 lines"));
+    }
+
+    #[test]
+    fn test_read_large_file_collapsed() {
+        // With default threshold of 5, 10 lines should collapse
+        let formatter = ToolResultFormatter::new();
+        let content = (1..=10)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let result = formatter.format_result_collapsible("read_file", &content);
+
+        assert!(result.collapsed_content.is_some());
+        assert_eq!(result.collapsed_count, 10);
+        assert!(result.display.contains("10 lines"));
+        assert!(result.display.contains("/results"));
+    }
+
+    #[test]
+    fn test_read_collapsed_has_content() {
+        // Verify collapsed_content contains the full formatted file
+        let formatter = ToolResultFormatter::new();
+        let content = (1..=10)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let result = formatter.format_result_collapsible("read_file", &content);
+
+        assert!(result.collapsed_content.is_some());
+        let full_content = result.collapsed_content.unwrap();
+        // Should contain all lines
+        assert!(full_content.contains("line 1"));
+        assert!(full_content.contains("line 10"));
+        // Should have the formatted header
+        assert!(full_content.contains("10 lines"));
     }
 }

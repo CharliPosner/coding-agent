@@ -1,12 +1,10 @@
 # Bug Fixes
 
-Iterative bug fix list. Work through each deliverable in order.
-
-Each deliverable contains multiple checklist items that should be completed together.
+Iterative bug fix list. Work through each bug in order.
 
 ---
 
-## Deliverable 1: Context Bar Display Mismatch
+## Bug 1: Context Bar Display Mismatch
 **Priority**: High
 **Files**: `crates/coding-agent-cli/src/ui/context_bar.rs`, `crates/coding-agent-cli/src/cli/repl.rs`
 
@@ -45,7 +43,7 @@ Each deliverable contains multiple checklist items that should be completed toge
 
 ---
 
-## Deliverable 2: Read Tool Output Not Collapsible
+## Bug 2: Read Tool Output Not Collapsible
 **Priority**: Medium
 **Files**: `crates/coding-agent-cli/src/ui/tool_result.rs`
 
@@ -77,7 +75,7 @@ Each deliverable contains multiple checklist items that should be completed toge
 
 ---
 
-## Deliverable 3: Code Blocks Need Syntax Highlighting
+## Bug 3: Code Blocks Need Syntax Highlighting
 **Priority**: Medium
 **Files**: `crates/coding-agent-cli/src/ui/markdown.rs`, `crates/coding-agent-cli/Cargo.toml`
 
@@ -111,7 +109,7 @@ Each deliverable contains multiple checklist items that should be completed toge
 
 ---
 
-## Deliverable 4: Maximum Tool Iterations Limit Too Low
+## Bug 4: Maximum Tool Iterations Limit Too Low
 **Priority**: Low
 **Files**: `crates/coding-agent-cli/src/cli/repl.rs`, `crates/coding-agent-cli/src/config/settings.rs`
 
@@ -145,7 +143,7 @@ Each deliverable contains multiple checklist items that should be completed toge
 
 ---
 
-## Deliverable 5: H1 Header Dark Blue Has Poor Contrast
+## Bug 5: H1 Header Dark Blue Has Poor Contrast
 **Priority**: Low
 **Files**: `crates/coding-agent-cli/src/ui/markdown.rs`
 
