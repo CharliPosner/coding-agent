@@ -14,6 +14,7 @@ mod document;
 mod exit;
 mod help;
 mod history;
+mod land;
 mod model;
 mod results;
 mod spec;
@@ -114,6 +115,7 @@ impl CommandRegistry {
         registry.register(&exit::QuitCommand);
         registry.register(&exit::QCommand);
         registry.register(&history::HistoryCommand);
+        registry.register(&land::LandCommand);
         registry.register(&model::ModelCommand);
         registry.register(&spec::SpecCommand);
         registry.register(&status::StatusCommand);
@@ -251,6 +253,9 @@ mod tests {
 
         // History command exists
         assert!(registry.get("history").is_some());
+
+        // Land command exists
+        assert!(registry.get("land").is_some());
 
         // Model command exists
         assert!(registry.get("model").is_some());

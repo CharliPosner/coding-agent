@@ -17,6 +17,10 @@ use std::io::{self, Write};
 const YELLOW_THRESHOLD: u64 = 60;
 const RED_THRESHOLD: u64 = 85;
 
+/// Smart zone thresholds for context warnings.
+pub const SMART_ZONE_WARNING: f64 = 60.0;
+pub const SMART_ZONE_CRITICAL: f64 = 70.0;
+
 /// Default context bar width (in characters).
 const DEFAULT_BAR_WIDTH: usize = 30;
 
@@ -213,6 +217,52 @@ impl ContextBar {
     pub fn print_inline(&self) -> io::Result<()> {
         let mut stdout = io::stdout();
         write!(stdout, "\r{}", self.render())?;
+        stdout.flush()
+    }
+
+    /// Get a warning message if context usage is in the warning zone.
+    ///
+    /// Returns:
+    /// - None if usage is below 60%
+    /// - Warning message at 60-70%
+    /// - Critical message at 70%+
+    pub fn warning_message(&self) -> Option<String> {
+        let pct = self.percent() as f64;
+        if pct >= SMART_ZONE_CRITICAL {
+            Some("Consider /clear or new session — reasoning space limited".to_string())
+        } else if pct >= SMART_ZONE_WARNING {
+            Some("Approaching context limit — quality may degrade".to_string())
+        } else {
+            None
+        }
+    }
+
+    /// Render the context bar with an optional warning line below.
+    ///
+    /// Output format when in warning zone:
+    /// ```text
+    /// Context: [====================----------]  65% used | 130k / 200k tokens
+    /// ⚠ Approaching context limit — quality may degrade
+    /// ```
+    pub fn render_with_warning(&self) -> String {
+        let bar = self.render();
+        if let Some(warning) = self.warning_message() {
+            let warning_color = if self.percent() as f64 >= SMART_ZONE_CRITICAL {
+                Color::ContextRed
+            } else {
+                Color::ContextYellow
+            };
+            let styled_warning = self.theme.apply(warning_color, &format!("⚠ {}", warning));
+            format!("{}\n{}", bar, styled_warning)
+        } else {
+            bar
+        }
+    }
+
+    /// Print the context bar with warning to stdout.
+    pub fn print_with_warning(&self) -> io::Result<()> {
+        let mut stdout = io::stdout();
+        writeln!(stdout, "{}", self.render_with_warning())?;
         stdout.flush()
     }
 }
@@ -430,6 +480,60 @@ mod tests {
         bar.set_tokens(u64::MAX - 10);
         bar.add_tokens(100); // Would overflow
         assert_eq!(bar.current_tokens(), u64::MAX); // Saturated
+    }
+
+    #[test]
+    fn test_context_bar_warning_message_none() {
+        let mut bar = ContextBar::new(100);
+        bar.set_tokens(50); // 50% - no warning
+        assert!(bar.warning_message().is_none());
+    }
+
+    #[test]
+    fn test_context_bar_warning_message_warning_zone() {
+        let mut bar = ContextBar::new(100);
+        bar.set_tokens(65); // 65% - warning zone
+        let warning = bar.warning_message();
+        assert!(warning.is_some());
+        assert!(warning.unwrap().contains("Approaching context limit"));
+    }
+
+    #[test]
+    fn test_context_bar_warning_message_critical_zone() {
+        let mut bar = ContextBar::new(100);
+        bar.set_tokens(75); // 75% - critical zone
+        let warning = bar.warning_message();
+        assert!(warning.is_some());
+        assert!(warning.unwrap().contains("Consider /clear"));
+    }
+
+    #[test]
+    fn test_context_bar_render_with_warning_no_warning() {
+        let mut bar = ContextBar::new(100);
+        bar.set_tokens(50);
+        let output = bar.render_with_warning();
+        // Should not contain warning symbol when below threshold
+        assert!(!output.contains("⚠"));
+    }
+
+    #[test]
+    fn test_context_bar_render_with_warning_in_warning_zone() {
+        let mut bar = ContextBar::new(100);
+        bar.set_tokens(65);
+        let output = bar.render_with_warning();
+        // Should contain warning symbol and message
+        assert!(output.contains("⚠"));
+        assert!(output.contains("Approaching context limit"));
+    }
+
+    #[test]
+    fn test_context_bar_render_with_warning_in_critical_zone() {
+        let mut bar = ContextBar::new(100);
+        bar.set_tokens(75);
+        let output = bar.render_with_warning();
+        // Should contain warning symbol and critical message
+        assert!(output.contains("⚠"));
+        assert!(output.contains("Consider /clear"));
     }
 
     // Bug 1 tests

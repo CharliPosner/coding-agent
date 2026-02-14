@@ -44,6 +44,12 @@ pub enum AgentState {
         executions: Vec<ToolExecutionStatus>,
     },
 
+    /// Post-tool-execution hook point for quality gates, context checks, etc.
+    PostToolsHook {
+        conversation: Vec<Message>,
+        pending_tool_results: Vec<Message>,
+    },
+
     /// Recoverable error with retry capability
     Error {
         conversation: Vec<Message>,
@@ -63,6 +69,7 @@ impl AgentState {
             Self::CallingLlm { .. } => "CallingLlm",
             Self::ProcessingLlmResponse { .. } => "ProcessingLlmResponse",
             Self::ExecutingTools { .. } => "ExecutingTools",
+            Self::PostToolsHook { .. } => "PostToolsHook",
             Self::Error { .. } => "Error",
             Self::ShuttingDown => "ShuttingDown",
         }
@@ -75,6 +82,7 @@ impl AgentState {
             Self::CallingLlm { conversation, .. } => Some(conversation),
             Self::ProcessingLlmResponse { conversation, .. } => Some(conversation),
             Self::ExecutingTools { conversation, .. } => Some(conversation),
+            Self::PostToolsHook { conversation, .. } => Some(conversation),
             Self::Error { conversation, .. } => Some(conversation),
             Self::ShuttingDown => None,
         }
@@ -107,6 +115,12 @@ pub enum AgentEvent {
         result: Result<String, String>,
     },
 
+    /// Post-tool hooks have completed
+    HooksCompleted {
+        proceed: bool,
+        warning: Option<String>,
+    },
+
     /// Retry timer expired (for error recovery)
     RetryTimeout,
 
@@ -137,6 +151,12 @@ pub enum AgentAction {
 
     /// Schedule a retry after a delay
     ScheduleRetry { delay_ms: u64 },
+
+    /// Run post-tool hooks (caller decides what to run)
+    RunPostToolsHooks { tool_names: Vec<String> },
+
+    /// Display a warning to the user (non-blocking)
+    DisplayWarning(String),
 
     /// Terminate the agent
     Shutdown,

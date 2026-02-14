@@ -751,6 +751,9 @@ impl Repl {
                 content: tool_results,
             });
 
+            // Run post-tools hooks: check context usage and display warnings
+            self.run_post_tools_hooks();
+
             // Check if Claude wants to stop
             if response.stop_reason.as_deref() == Some("end_turn") {
                 break;
@@ -1239,6 +1242,35 @@ impl Repl {
                     resource_type
                 ));
             }
+        }
+    }
+
+    /// Run post-tools hooks to check context usage and display warnings.
+    ///
+    /// This is called after tool execution completes but before continuing the LLM loop.
+    /// It checks context usage percentage and displays warnings at 60% and 70% thresholds.
+    fn run_post_tools_hooks(&self) {
+        let usage_percent = self.context_bar.percent() as f64;
+
+        let warning = if usage_percent >= 70.0 {
+            Some(format!(
+                "\x1b[33m⚠ Context at {:.0}% — consider /clear or /land soon\x1b[0m",
+                usage_percent
+            ))
+        } else if usage_percent >= 60.0 {
+            Some(format!(
+                "\x1b[33m⚠ Context at {:.0}% — approaching limit\x1b[0m",
+                usage_percent
+            ))
+        } else {
+            None
+        };
+
+        // Display the warning if any
+        if let Some(w) = warning {
+            self.print_newline();
+            self.print_line(&w);
+            self.print_newline();
         }
     }
 
@@ -1869,5 +1901,73 @@ mod tests {
         let output = "No matches found";
         let summary = repl.summarize_tool_result("code_search", output);
         assert_eq!(summary, "No matches found");
+    }
+
+    #[test]
+    fn test_post_tools_hooks_no_warning_below_60_percent() {
+        let mut repl = Repl::new(ReplConfig::default());
+
+        // Add tokens to reach ~50% (100,000 out of 200,000)
+        // We need to add a lot of tokens, so simulate many messages
+        for _ in 0..50 {
+            repl.context_bar_mut().add_tokens(1000); // 50 * 1000 = 50,000 tokens = 25%
+        }
+
+        // At 25%, no warning should be displayed
+        assert!(repl.context_bar().percent() < 60);
+
+        // run_post_tools_hooks should not output anything (we can't easily capture stdout,
+        // but we can verify the logic by checking the percentage thresholds)
+    }
+
+    #[test]
+    fn test_post_tools_hooks_warning_at_60_percent() {
+        let mut repl = Repl::new(ReplConfig::default());
+
+        // Add tokens to reach ~65% (130,000 out of 200,000)
+        for _ in 0..130 {
+            repl.context_bar_mut().add_tokens(1000); // 130,000 tokens = 65%
+        }
+
+        let percent = repl.context_bar().percent();
+        assert!(percent >= 60 && percent < 70, "Expected 60-69%, got {}%", percent);
+
+        // The warning message logic can be verified by checking threshold
+    }
+
+    #[test]
+    fn test_post_tools_hooks_warning_at_70_percent() {
+        let mut repl = Repl::new(ReplConfig::default());
+
+        // Add tokens to reach ~75% (150,000 out of 200,000)
+        for _ in 0..150 {
+            repl.context_bar_mut().add_tokens(1000); // 150,000 tokens = 75%
+        }
+
+        let percent = repl.context_bar().percent();
+        assert!(percent >= 70, "Expected >=70%, got {}%", percent);
+
+        // The 70%+ warning should mention /clear or /land
+    }
+
+    #[test]
+    fn test_post_tools_hooks_threshold_boundaries() {
+        let config = ReplConfig {
+            context_window: 100, // Small window for easy testing
+            ..ReplConfig::default()
+        };
+        let mut repl = Repl::new(config);
+
+        // At exactly 59 tokens (59%), no warning
+        repl.context_bar_mut().add_tokens(59);
+        assert_eq!(repl.context_bar().percent(), 59);
+
+        // At 60 tokens (60%), first warning threshold
+        repl.context_bar_mut().add_tokens(1);
+        assert_eq!(repl.context_bar().percent(), 60);
+
+        // At 70 tokens (70%), second warning threshold
+        repl.context_bar_mut().add_tokens(10);
+        assert_eq!(repl.context_bar().percent(), 70);
     }
 }

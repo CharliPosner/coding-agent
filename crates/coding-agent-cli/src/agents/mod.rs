@@ -7,6 +7,9 @@ mod fix_agent;
 pub mod manager;
 pub mod status;
 
-pub use fix_agent::{FixAgent, FixAgentConfig, FixAttempt, FixResult, FixStatus};
+pub use fix_agent::{
+    categorize_deviation, should_auto_fix, DeviationCategory, DeviationRule, FixAgent,
+    FixAgentConfig, FixAttempt, FixResult, FixStatus,
+};
 pub use manager::AgentManager;
 pub use status::AgentId;

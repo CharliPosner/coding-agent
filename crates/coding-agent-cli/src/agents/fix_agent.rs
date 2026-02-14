@@ -3,6 +3,21 @@
 //! The fix-agent is spawned when a code error occurs to automatically diagnose
 //! and fix the issue. It can handle errors like missing dependencies, missing
 //! imports, type errors, and syntax errors.
+//!
+//! ## Deviation Rules
+//!
+//! The fix-agent implements explicit autonomy boundaries that determine when
+//! to auto-fix errors vs when to ask the user for permission:
+//!
+//! **Auto-fix (proceed without asking):**
+//! - `DeviationCategory::AgentCode` - Code errors the agent introduced
+//! - `DeviationCategory::Dependency` - Broken dependencies (missing crate in Cargo.toml)
+//! - `DeviationCategory::TestLint` - Test/lint failures from agent's changes
+//!
+//! **Must ask (blocks execution until user confirms):**
+//! - `DeviationCategory::Architecture` - New modules, schema changes
+//! - `DeviationCategory::NewDependency` - Adding dependencies not mentioned in task
+//! - `DeviationCategory::FileDeletion` - Deleting files
 
 use crate::tools::{
     ErrorCategory, FixApplicationResult, FixInfo, FixType, RegressionTest, RegressionTestConfig,
@@ -12,6 +27,196 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+/// Categories of deviations that determine agent autonomy boundaries.
+///
+/// These categories classify the type of change or error to determine whether
+/// the fix-agent should proceed automatically or ask the user for permission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeviationCategory {
+    /// Code errors the agent introduced (compiler errors, type mismatches).
+    /// These are typically safe to auto-fix since the agent caused them.
+    AgentCode,
+
+    /// Broken dependencies (missing crate in Cargo.toml that code needs).
+    /// Safe to auto-fix by adding the required dependency.
+    Dependency,
+
+    /// Test/lint failures from agent's changes.
+    /// Safe to auto-fix since these validate the agent's own work.
+    TestLint,
+
+    /// Architectural changes (new modules, schema changes, significant refactors).
+    /// Requires user approval as these affect project structure.
+    Architecture,
+
+    /// Adding dependencies not mentioned in task.
+    /// Requires user approval to avoid scope creep.
+    NewDependency,
+
+    /// Deleting files.
+    /// Requires user approval due to potential data loss.
+    FileDeletion,
+}
+
+/// Rules that determine whether the agent should auto-fix or ask the user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeviationRule {
+    /// Auto-fix: proceed without asking the user.
+    /// Used for errors that the agent introduced and can safely fix.
+    AutoFix,
+
+    /// Must ask: blocks execution until user confirms.
+    /// Used for changes that affect project structure or scope.
+    MustAsk,
+}
+
+impl DeviationCategory {
+    /// Get the deviation rule for this category.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use coding_agent_cli::agents::DeviationCategory;
+    /// use coding_agent_cli::agents::DeviationRule;
+    ///
+    /// // Auto-fix categories
+    /// assert_eq!(DeviationCategory::AgentCode.deviation_rule(), DeviationRule::AutoFix);
+    /// assert_eq!(DeviationCategory::Dependency.deviation_rule(), DeviationRule::AutoFix);
+    /// assert_eq!(DeviationCategory::TestLint.deviation_rule(), DeviationRule::AutoFix);
+    ///
+    /// // Must-ask categories
+    /// assert_eq!(DeviationCategory::Architecture.deviation_rule(), DeviationRule::MustAsk);
+    /// assert_eq!(DeviationCategory::NewDependency.deviation_rule(), DeviationRule::MustAsk);
+    /// assert_eq!(DeviationCategory::FileDeletion.deviation_rule(), DeviationRule::MustAsk);
+    /// ```
+    pub fn deviation_rule(&self) -> DeviationRule {
+        match self {
+            // Auto-fix rules (1-3): Safe to proceed without user approval
+            Self::AgentCode => DeviationRule::AutoFix,
+            Self::Dependency => DeviationRule::AutoFix,
+            Self::TestLint => DeviationRule::AutoFix,
+            // Must-ask rules (4-6): Require user approval
+            Self::Architecture => DeviationRule::MustAsk,
+            Self::NewDependency => DeviationRule::MustAsk,
+            Self::FileDeletion => DeviationRule::MustAsk,
+        }
+    }
+
+    /// Check if this category allows auto-fixing.
+    pub fn allows_auto_fix(&self) -> bool {
+        self.deviation_rule() == DeviationRule::AutoFix
+    }
+}
+
+/// Categorize an error message into a deviation category.
+///
+/// Uses heuristics to determine what type of error or change is being proposed,
+/// which then determines whether the fix-agent should auto-fix or ask the user.
+///
+/// # Examples
+///
+/// ```rust
+/// use coding_agent_cli::agents::{categorize_deviation, DeviationCategory};
+///
+/// // Code errors
+/// assert_eq!(
+///     categorize_deviation("cannot find value `foo` in this scope"),
+///     DeviationCategory::AgentCode
+/// );
+///
+/// // Dependency errors
+/// assert_eq!(
+///     categorize_deviation("cannot find crate `serde`"),
+///     DeviationCategory::Dependency
+/// );
+///
+/// // Test/lint failures
+/// assert_eq!(
+///     categorize_deviation("test failed: expected 5, got 3"),
+///     DeviationCategory::TestLint
+/// );
+/// ```
+pub fn categorize_deviation(error_message: &str) -> DeviationCategory {
+    let lower = error_message.to_lowercase();
+
+    // Check for dependency-related errors (missing crate/package)
+    if (lower.contains("cannot find") || lower.contains("not found") || lower.contains("unresolved"))
+        && (lower.contains("crate") || lower.contains("package") || lower.contains("module"))
+    {
+        return DeviationCategory::Dependency;
+    }
+
+    // Check for test or lint failures
+    if lower.contains("test failed")
+        || lower.contains("test failure")
+        || lower.contains("assertion failed")
+        || lower.contains("clippy")
+        || lower.contains("lint")
+        || lower.contains("warning:")
+            && (lower.contains("unused") || lower.contains("dead_code"))
+    {
+        return DeviationCategory::TestLint;
+    }
+
+    // Check for file deletion (must ask)
+    if lower.contains("delete") && lower.contains("file")
+        || lower.contains("remove") && lower.contains("file")
+        || lower.contains("rm ") && !lower.contains("rm -rf /") // safety check
+    {
+        return DeviationCategory::FileDeletion;
+    }
+
+    // Check for architectural changes (must ask)
+    if lower.contains("new module")
+        || lower.contains("create module")
+        || lower.contains("schema change")
+        || lower.contains("refactor")
+        || lower.contains("restructure")
+        || lower.contains("reorganize")
+    {
+        return DeviationCategory::Architecture;
+    }
+
+    // Check for adding new dependencies not in task (must ask)
+    if lower.contains("add dependency")
+        || lower.contains("add crate")
+        || lower.contains("install package")
+        || lower.contains("npm install")
+        || lower.contains("cargo add")
+    {
+        return DeviationCategory::NewDependency;
+    }
+
+    // Default to agent code errors (safe to auto-fix)
+    // This covers: type errors, syntax errors, missing imports, etc.
+    DeviationCategory::AgentCode
+}
+
+/// Determine if a fix should be attempted based on deviation rules.
+///
+/// Returns `true` if the error can be auto-fixed, `false` if user approval is needed.
+///
+/// # Arguments
+///
+/// * `error_message` - The error message to categorize
+///
+/// # Examples
+///
+/// ```rust
+/// use coding_agent_cli::agents::should_auto_fix;
+///
+/// // Auto-fixable errors
+/// assert!(should_auto_fix("cannot find value `foo` in this scope"));
+/// assert!(should_auto_fix("cannot find crate `serde`"));
+///
+/// // Requires user approval
+/// assert!(!should_auto_fix("need to delete file old_config.rs"));
+/// assert!(!should_auto_fix("requires new module for feature"));
+/// ```
+pub fn should_auto_fix(error_message: &str) -> bool {
+    categorize_deviation(error_message).allows_auto_fix()
+}
 
 /// Counter for generating unique agent IDs.
 static AGENT_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -303,6 +508,54 @@ impl FixAgent {
     /// Check if the agent has more attempts remaining.
     pub fn has_attempts_remaining(&self) -> bool {
         (self.attempts.len() as u32) < self.config.max_attempts
+    }
+
+    /// Get the deviation category for this agent's error.
+    ///
+    /// This categorizes the error to determine whether the agent should
+    /// auto-fix or ask the user for permission.
+    pub fn deviation_category(&self) -> DeviationCategory {
+        categorize_deviation(&self.error.message)
+    }
+
+    /// Get the deviation rule for this agent's error.
+    ///
+    /// Returns `DeviationRule::AutoFix` if the agent can proceed without asking,
+    /// or `DeviationRule::MustAsk` if user approval is required.
+    pub fn deviation_rule(&self) -> DeviationRule {
+        self.deviation_category().deviation_rule()
+    }
+
+    /// Check if this agent should attempt to fix automatically based on deviation rules.
+    ///
+    /// Returns `true` if:
+    /// - The error is technically auto-fixable (code error)
+    /// - The deviation category allows auto-fixing
+    ///
+    /// Returns `false` if user approval is required.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use coding_agent_cli::agents::FixAgent;
+    /// use coding_agent_cli::tools::{ToolError, ToolExecutionResult};
+    /// use std::time::Duration;
+    ///
+    /// // Code error - should auto-fix
+    /// let result = ToolExecutionResult {
+    ///     tool_name: "build".to_string(),
+    ///     call_id: "1".to_string(),
+    ///     result: Err(ToolError::new("cannot find value `foo` in this scope")),
+    ///     duration: Duration::from_millis(100),
+    ///     retries: 0,
+    /// };
+    /// if let Some(agent) = FixAgent::spawn_with_defaults(result) {
+    ///     assert!(agent.should_attempt_fix());
+    /// }
+    /// ```
+    pub fn should_attempt_fix(&self) -> bool {
+        // Must be a technically fixable error AND have an auto-fix deviation rule
+        self.error.is_auto_fixable() && self.deviation_category().allows_auto_fix()
     }
 
     /// Get the fix diagnosis based on the error category.
@@ -916,5 +1169,365 @@ mod tests {
         assert!(config.generate_tests);
         assert_eq!(config.attempt_timeout_ms, 30000);
         assert!(config.allow_multi_file_fixes);
+    }
+
+    // ==================== Deviation Rules Tests ====================
+
+    mod deviation_rules {
+        use super::*;
+
+        // --- DeviationCategory::deviation_rule() tests ---
+
+        #[test]
+        fn test_agent_code_category_allows_auto_fix() {
+            assert_eq!(
+                DeviationCategory::AgentCode.deviation_rule(),
+                DeviationRule::AutoFix
+            );
+            assert!(DeviationCategory::AgentCode.allows_auto_fix());
+        }
+
+        #[test]
+        fn test_dependency_category_allows_auto_fix() {
+            assert_eq!(
+                DeviationCategory::Dependency.deviation_rule(),
+                DeviationRule::AutoFix
+            );
+            assert!(DeviationCategory::Dependency.allows_auto_fix());
+        }
+
+        #[test]
+        fn test_test_lint_category_allows_auto_fix() {
+            assert_eq!(
+                DeviationCategory::TestLint.deviation_rule(),
+                DeviationRule::AutoFix
+            );
+            assert!(DeviationCategory::TestLint.allows_auto_fix());
+        }
+
+        #[test]
+        fn test_architecture_category_requires_ask() {
+            assert_eq!(
+                DeviationCategory::Architecture.deviation_rule(),
+                DeviationRule::MustAsk
+            );
+            assert!(!DeviationCategory::Architecture.allows_auto_fix());
+        }
+
+        #[test]
+        fn test_new_dependency_category_requires_ask() {
+            assert_eq!(
+                DeviationCategory::NewDependency.deviation_rule(),
+                DeviationRule::MustAsk
+            );
+            assert!(!DeviationCategory::NewDependency.allows_auto_fix());
+        }
+
+        #[test]
+        fn test_file_deletion_category_requires_ask() {
+            assert_eq!(
+                DeviationCategory::FileDeletion.deviation_rule(),
+                DeviationRule::MustAsk
+            );
+            assert!(!DeviationCategory::FileDeletion.allows_auto_fix());
+        }
+
+        // --- categorize_deviation() tests ---
+
+        #[test]
+        fn test_categorize_missing_crate_as_dependency() {
+            assert_eq!(
+                categorize_deviation("cannot find crate `serde`"),
+                DeviationCategory::Dependency
+            );
+            assert_eq!(
+                categorize_deviation("error: unresolved import crate `tokio`"),
+                DeviationCategory::Dependency
+            );
+            assert_eq!(
+                categorize_deviation("package `foo` not found in registry"),
+                DeviationCategory::Dependency
+            );
+        }
+
+        #[test]
+        fn test_categorize_missing_module_as_dependency() {
+            assert_eq!(
+                categorize_deviation("cannot find module `utils` in this crate"),
+                DeviationCategory::Dependency
+            );
+        }
+
+        #[test]
+        fn test_categorize_test_failures_as_test_lint() {
+            assert_eq!(
+                categorize_deviation("test failed: assertion `left == right` failed"),
+                DeviationCategory::TestLint
+            );
+            assert_eq!(
+                categorize_deviation("test failure in tests::my_test"),
+                DeviationCategory::TestLint
+            );
+            assert_eq!(
+                categorize_deviation("assertion failed: expected 5, got 3"),
+                DeviationCategory::TestLint
+            );
+        }
+
+        #[test]
+        fn test_categorize_clippy_as_test_lint() {
+            assert_eq!(
+                categorize_deviation("clippy warning: unused variable `x`"),
+                DeviationCategory::TestLint
+            );
+            assert_eq!(
+                categorize_deviation("error from clippy: needless_return"),
+                DeviationCategory::TestLint
+            );
+        }
+
+        #[test]
+        fn test_categorize_lint_warnings_as_test_lint() {
+            assert_eq!(
+                categorize_deviation("lint error: missing documentation"),
+                DeviationCategory::TestLint
+            );
+            assert_eq!(
+                categorize_deviation("warning: unused variable `foo`"),
+                DeviationCategory::TestLint
+            );
+            assert_eq!(
+                categorize_deviation("warning: dead_code on function `bar`"),
+                DeviationCategory::TestLint
+            );
+        }
+
+        #[test]
+        fn test_categorize_file_deletion_as_file_deletion() {
+            assert_eq!(
+                categorize_deviation("need to delete file old_config.rs"),
+                DeviationCategory::FileDeletion
+            );
+            assert_eq!(
+                categorize_deviation("remove file deprecated_module.rs"),
+                DeviationCategory::FileDeletion
+            );
+            assert_eq!(
+                categorize_deviation("running rm unused_file.txt"),
+                DeviationCategory::FileDeletion
+            );
+        }
+
+        #[test]
+        fn test_categorize_architecture_changes() {
+            assert_eq!(
+                categorize_deviation("requires new module for authentication"),
+                DeviationCategory::Architecture
+            );
+            assert_eq!(
+                categorize_deviation("need to create module for utilities"),
+                DeviationCategory::Architecture
+            );
+            assert_eq!(
+                categorize_deviation("schema change required for user table"),
+                DeviationCategory::Architecture
+            );
+            assert_eq!(
+                categorize_deviation("need to refactor the auth system"),
+                DeviationCategory::Architecture
+            );
+            assert_eq!(
+                categorize_deviation("should restructure the codebase"),
+                DeviationCategory::Architecture
+            );
+        }
+
+        #[test]
+        fn test_categorize_new_dependency_additions() {
+            assert_eq!(
+                categorize_deviation("need to add dependency for JSON parsing"),
+                DeviationCategory::NewDependency
+            );
+            assert_eq!(
+                categorize_deviation("should add crate serde for serialization"),
+                DeviationCategory::NewDependency
+            );
+            assert_eq!(
+                categorize_deviation("running cargo add tokio"),
+                DeviationCategory::NewDependency
+            );
+            assert_eq!(
+                categorize_deviation("npm install express"),
+                DeviationCategory::NewDependency
+            );
+        }
+
+        #[test]
+        fn test_categorize_general_code_errors_as_agent_code() {
+            // Type errors
+            assert_eq!(
+                categorize_deviation("mismatched types: expected `&str`, found `String`"),
+                DeviationCategory::AgentCode
+            );
+            // Syntax errors
+            assert_eq!(
+                categorize_deviation("expected `;` after expression"),
+                DeviationCategory::AgentCode
+            );
+            // Undefined variable
+            assert_eq!(
+                categorize_deviation("use of undeclared identifier `foo`"),
+                DeviationCategory::AgentCode
+            );
+            // Generic compile error
+            assert_eq!(
+                categorize_deviation("error[E0599]: no method named `bar`"),
+                DeviationCategory::AgentCode
+            );
+        }
+
+        // --- should_auto_fix() tests ---
+
+        #[test]
+        fn test_should_auto_fix_for_agent_code_errors() {
+            assert!(should_auto_fix("cannot find value `x` in this scope"));
+            assert!(should_auto_fix("mismatched types"));
+            assert!(should_auto_fix("expected `;`"));
+        }
+
+        #[test]
+        fn test_should_auto_fix_for_dependency_errors() {
+            assert!(should_auto_fix("cannot find crate `serde`"));
+            assert!(should_auto_fix("unresolved module `utils`"));
+        }
+
+        #[test]
+        fn test_should_auto_fix_for_test_lint_errors() {
+            assert!(should_auto_fix("test failed: assertion error"));
+            assert!(should_auto_fix("clippy warning: unused import"));
+        }
+
+        #[test]
+        fn test_should_not_auto_fix_for_architecture_changes() {
+            assert!(!should_auto_fix("need to create module for auth"));
+            assert!(!should_auto_fix("requires schema change"));
+            assert!(!should_auto_fix("should refactor the code"));
+        }
+
+        #[test]
+        fn test_should_not_auto_fix_for_new_dependencies() {
+            assert!(!should_auto_fix("need to add dependency for parsing"));
+            assert!(!should_auto_fix("cargo add tokio"));
+            assert!(!should_auto_fix("npm install lodash"));
+        }
+
+        #[test]
+        fn test_should_not_auto_fix_for_file_deletion() {
+            assert!(!should_auto_fix("delete file old_code.rs"));
+            assert!(!should_auto_fix("remove file unused.txt"));
+        }
+
+        // --- FixAgent deviation methods tests ---
+
+        #[test]
+        fn test_fix_agent_deviation_category_for_code_error() {
+            let result = make_code_error_result("cannot find value `foo` in this scope");
+            let agent = FixAgent::spawn_with_defaults(result).unwrap();
+
+            // Note: The error message is categorized by the executor as a code error,
+            // but the deviation categorization looks at the message content
+            let category = agent.deviation_category();
+            assert!(category.allows_auto_fix());
+        }
+
+        #[test]
+        fn test_fix_agent_deviation_category_for_missing_crate() {
+            let result = make_code_error_result("cannot find crate `serde`");
+            let agent = FixAgent::spawn_with_defaults(result).unwrap();
+
+            assert_eq!(agent.deviation_category(), DeviationCategory::Dependency);
+            assert_eq!(agent.deviation_rule(), DeviationRule::AutoFix);
+            assert!(agent.should_attempt_fix());
+        }
+
+        #[test]
+        fn test_fix_agent_deviation_category_for_clippy_lint() {
+            // Use a message that is both a "code error" for ToolError AND "TestLint" for deviation
+            // The message must match ToolError's "cannot find ... in this scope" pattern
+            // AND contain "clippy" for the deviation categorizer
+            let result =
+                make_code_error_result("clippy: cannot find value `unused_var` in this scope");
+            let agent = FixAgent::spawn_with_defaults(result).unwrap();
+
+            assert_eq!(agent.deviation_category(), DeviationCategory::TestLint);
+            assert_eq!(agent.deviation_rule(), DeviationRule::AutoFix);
+            assert!(agent.should_attempt_fix());
+        }
+
+        #[test]
+        fn test_fix_agent_should_attempt_fix_respects_deviation_rules() {
+            // Auto-fixable: code error with auto-fix deviation rule
+            let result = make_code_error_result("cannot find value `x` in this scope");
+            let agent = FixAgent::spawn_with_defaults(result).unwrap();
+            assert!(agent.should_attempt_fix());
+
+            // Another auto-fixable case: missing dependency (both Code error and Dependency deviation)
+            let result2 = make_code_error_result("cannot find crate `missing_crate`");
+            let agent2 = FixAgent::spawn_with_defaults(result2).unwrap();
+            assert!(agent2.should_attempt_fix());
+        }
+
+        // --- DeviationCategory and DeviationRule derive trait tests ---
+
+        #[test]
+        fn test_deviation_category_debug() {
+            assert_eq!(format!("{:?}", DeviationCategory::AgentCode), "AgentCode");
+            assert_eq!(format!("{:?}", DeviationCategory::Dependency), "Dependency");
+            assert_eq!(format!("{:?}", DeviationCategory::TestLint), "TestLint");
+            assert_eq!(
+                format!("{:?}", DeviationCategory::Architecture),
+                "Architecture"
+            );
+            assert_eq!(
+                format!("{:?}", DeviationCategory::NewDependency),
+                "NewDependency"
+            );
+            assert_eq!(
+                format!("{:?}", DeviationCategory::FileDeletion),
+                "FileDeletion"
+            );
+        }
+
+        #[test]
+        fn test_deviation_rule_debug() {
+            assert_eq!(format!("{:?}", DeviationRule::AutoFix), "AutoFix");
+            assert_eq!(format!("{:?}", DeviationRule::MustAsk), "MustAsk");
+        }
+
+        #[test]
+        fn test_deviation_category_clone() {
+            let category = DeviationCategory::AgentCode;
+            let cloned = category.clone();
+            assert_eq!(category, cloned);
+        }
+
+        #[test]
+        fn test_deviation_rule_clone() {
+            let rule = DeviationRule::AutoFix;
+            let cloned = rule.clone();
+            assert_eq!(rule, cloned);
+        }
+
+        #[test]
+        fn test_deviation_category_eq() {
+            assert_eq!(DeviationCategory::AgentCode, DeviationCategory::AgentCode);
+            assert_ne!(DeviationCategory::AgentCode, DeviationCategory::Dependency);
+        }
+
+        #[test]
+        fn test_deviation_rule_eq() {
+            assert_eq!(DeviationRule::AutoFix, DeviationRule::AutoFix);
+            assert_ne!(DeviationRule::AutoFix, DeviationRule::MustAsk);
+        }
     }
 }

@@ -169,18 +169,18 @@ impl StateMachine {
 
                 if all_done {
                     // Build tool result messages
-                    let mut conv = conversation.clone();
+                    let mut tool_result_messages = Vec::new();
                     for exec in &execs {
                         if let ToolExecutionStatus::Completed { call_id, result } = exec {
                             match result {
                                 Ok(output) => {
-                                    conv.push(Message::tool_result(
+                                    tool_result_messages.push(Message::tool_result(
                                         call_id.clone(),
                                         output.clone(),
                                     ));
                                 }
                                 Err(err) => {
-                                    conv.push(Message::tool_result_error(
+                                    tool_result_messages.push(Message::tool_result_error(
                                         call_id.clone(),
                                         format!("Error: {}", err),
                                     ));
@@ -189,12 +189,27 @@ impl StateMachine {
                         }
                     }
 
-                    self.state = AgentState::CallingLlm {
-                        conversation: conv.clone(),
-                        retries: 0,
+                    // Collect tool names for hook decision (from original executions)
+                    let tool_names: Vec<String> = executions
+                        .iter()
+                        .filter_map(|e| match e {
+                            ToolExecutionStatus::Pending { tool_name, .. } => {
+                                Some(tool_name.clone())
+                            }
+                            ToolExecutionStatus::Running { tool_name, .. } => {
+                                Some(tool_name.clone())
+                            }
+                            ToolExecutionStatus::Completed { .. } => None,
+                        })
+                        .collect();
+
+                    // Transition to PostToolsHook instead of CallingLlm
+                    self.state = AgentState::PostToolsHook {
+                        conversation: conversation.clone(),
+                        pending_tool_results: tool_result_messages,
                     };
 
-                    AgentAction::SendLlmRequest { messages: conv }
+                    AgentAction::RunPostToolsHooks { tool_names }
                 } else {
                     self.state = AgentState::ExecutingTools {
                         conversation: conversation.clone(),
@@ -202,6 +217,45 @@ impl StateMachine {
                     };
 
                     AgentAction::WaitForEvent
+                }
+            }
+
+            // === PostToolsHook ===
+            (
+                AgentState::PostToolsHook {
+                    conversation,
+                    pending_tool_results,
+                },
+                AgentEvent::HooksCompleted { proceed, warning },
+            ) => {
+                if proceed {
+                    // Continue to LLM with tool results
+                    let mut conv = conversation.clone();
+                    conv.extend(pending_tool_results.clone());
+
+                    self.state = AgentState::CallingLlm {
+                        conversation: conv.clone(),
+                        retries: 0,
+                    };
+
+                    // If there's a warning, return DisplayWarning action
+                    // The caller should handle it and then call SendLlmRequest
+                    if let Some(w) = warning {
+                        AgentAction::DisplayWarning(w)
+                    } else {
+                        AgentAction::SendLlmRequest { messages: conv }
+                    }
+                } else {
+                    // Stop loop, return to user
+                    self.state = AgentState::WaitingForUserInput {
+                        conversation: conversation.clone(),
+                    };
+
+                    if let Some(w) = warning {
+                        AgentAction::DisplayWarning(w)
+                    } else {
+                        AgentAction::PromptForInput
+                    }
                 }
             }
 
@@ -430,7 +484,15 @@ mod tests {
             result: Ok("hello".to_string()),
         });
 
-        // Should transition to CallingLlm to send tool results
+        // Should transition to PostToolsHook (not directly to CallingLlm)
+        assert!(matches!(action, AgentAction::RunPostToolsHooks { .. }));
+        assert_eq!(machine.state().name(), "PostToolsHook");
+
+        // After hooks complete, should transition to CallingLlm
+        let action = machine.handle_event(AgentEvent::HooksCompleted {
+            proceed: true,
+            warning: None,
+        });
         assert!(matches!(action, AgentAction::SendLlmRequest { .. }));
         assert_eq!(machine.state().name(), "CallingLlm");
     }
@@ -463,10 +525,18 @@ mod tests {
         assert!(matches!(action, AgentAction::WaitForEvent));
         assert_eq!(machine.state().name(), "ExecutingTools");
 
-        // Complete second tool - should proceed
+        // Complete second tool - should proceed to PostToolsHook
         let action = machine.handle_event(AgentEvent::ToolCompleted {
             call_id: "tool_2".to_string(),
             result: Ok("two".to_string()),
+        });
+        assert!(matches!(action, AgentAction::RunPostToolsHooks { .. }));
+        assert_eq!(machine.state().name(), "PostToolsHook");
+
+        // After hooks complete, should transition to CallingLlm
+        let action = machine.handle_event(AgentEvent::HooksCompleted {
+            proceed: true,
+            warning: None,
         });
         assert!(matches!(action, AgentAction::SendLlmRequest { .. }));
         assert_eq!(machine.state().name(), "CallingLlm");
@@ -490,7 +560,15 @@ mod tests {
             result: Err("command not found".to_string()),
         });
 
-        // Should still proceed to send results (with error flag)
+        // Should proceed to PostToolsHook (even with error)
+        assert!(matches!(action, AgentAction::RunPostToolsHooks { .. }));
+        assert_eq!(machine.state().name(), "PostToolsHook");
+
+        // After hooks complete, should transition to CallingLlm
+        let action = machine.handle_event(AgentEvent::HooksCompleted {
+            proceed: true,
+            warning: None,
+        });
         assert!(matches!(action, AgentAction::SendLlmRequest { .. }));
         assert_eq!(machine.state().name(), "CallingLlm");
     }
@@ -629,5 +707,117 @@ mod tests {
             action,
             AgentAction::ScheduleRetry { delay_ms: 3000 }
         ));
+    }
+
+    #[test]
+    fn test_post_tools_hook_with_warning() {
+        let mut machine = StateMachine::new();
+        machine.handle_event(AgentEvent::UserInput("Run a command".to_string()));
+        machine.handle_event(AgentEvent::LlmCompleted {
+            content: vec![ContentBlock::ToolUse {
+                id: "tool_1".to_string(),
+                name: "bash".to_string(),
+                input: json!({"command": "echo hello"}),
+            }],
+            stop_reason: "tool_use".to_string(),
+        });
+        machine.handle_event(AgentEvent::ToolCompleted {
+            call_id: "tool_1".to_string(),
+            result: Ok("hello".to_string()),
+        });
+
+        // HooksCompleted with warning
+        let action = machine.handle_event(AgentEvent::HooksCompleted {
+            proceed: true,
+            warning: Some("Context at 65%".to_string()),
+        });
+
+        // Should return DisplayWarning (caller handles it then sends LLM request)
+        assert!(matches!(action, AgentAction::DisplayWarning(ref w) if w == "Context at 65%"));
+        assert_eq!(machine.state().name(), "CallingLlm");
+    }
+
+    #[test]
+    fn test_post_tools_hook_stops_on_proceed_false() {
+        let mut machine = StateMachine::new();
+        machine.handle_event(AgentEvent::UserInput("Run a command".to_string()));
+        machine.handle_event(AgentEvent::LlmCompleted {
+            content: vec![ContentBlock::ToolUse {
+                id: "tool_1".to_string(),
+                name: "bash".to_string(),
+                input: json!({"command": "echo hello"}),
+            }],
+            stop_reason: "tool_use".to_string(),
+        });
+        machine.handle_event(AgentEvent::ToolCompleted {
+            call_id: "tool_1".to_string(),
+            result: Ok("hello".to_string()),
+        });
+
+        // HooksCompleted with proceed=false (stop the loop)
+        let action = machine.handle_event(AgentEvent::HooksCompleted {
+            proceed: false,
+            warning: None,
+        });
+
+        // Should return to WaitingForUserInput
+        assert!(matches!(action, AgentAction::PromptForInput));
+        assert_eq!(machine.state().name(), "WaitingForUserInput");
+    }
+
+    #[test]
+    fn test_post_tools_hook_stops_with_warning() {
+        let mut machine = StateMachine::new();
+        machine.handle_event(AgentEvent::UserInput("Run a command".to_string()));
+        machine.handle_event(AgentEvent::LlmCompleted {
+            content: vec![ContentBlock::ToolUse {
+                id: "tool_1".to_string(),
+                name: "bash".to_string(),
+                input: json!({"command": "echo hello"}),
+            }],
+            stop_reason: "tool_use".to_string(),
+        });
+        machine.handle_event(AgentEvent::ToolCompleted {
+            call_id: "tool_1".to_string(),
+            result: Ok("hello".to_string()),
+        });
+
+        // HooksCompleted with proceed=false and warning
+        let action = machine.handle_event(AgentEvent::HooksCompleted {
+            proceed: false,
+            warning: Some("Critical context level".to_string()),
+        });
+
+        // Should return DisplayWarning and go to WaitingForUserInput
+        assert!(
+            matches!(action, AgentAction::DisplayWarning(ref w) if w == "Critical context level")
+        );
+        assert_eq!(machine.state().name(), "WaitingForUserInput");
+    }
+
+    #[test]
+    fn test_shutdown_from_post_tools_hook() {
+        let mut machine = StateMachine::new();
+        machine.handle_event(AgentEvent::UserInput("Run".to_string()));
+        machine.handle_event(AgentEvent::LlmCompleted {
+            content: vec![ContentBlock::ToolUse {
+                id: "tool_1".to_string(),
+                name: "bash".to_string(),
+                input: json!({}),
+            }],
+            stop_reason: "tool_use".to_string(),
+        });
+        machine.handle_event(AgentEvent::ToolCompleted {
+            call_id: "tool_1".to_string(),
+            result: Ok("done".to_string()),
+        });
+
+        // Now in PostToolsHook state
+        assert_eq!(machine.state().name(), "PostToolsHook");
+
+        let action = machine.handle_event(AgentEvent::ShutdownRequested);
+
+        assert!(matches!(action, AgentAction::Shutdown));
+        assert_eq!(machine.state().name(), "ShuttingDown");
     }
 }

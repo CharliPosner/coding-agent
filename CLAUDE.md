@@ -97,3 +97,12 @@ Requires `ANTHROPIC_API_KEY` in environment or `.env` file.
 - `docs/STATE_MACHINE.md` - Core state machine architecture
 - `docs/CLI_ARCHITECTURE.md` - CLI components, flow, and implementation status
 - `specs/command-line-interface.md` - Full CLI specification with phases
+
+## Session Discipline
+
+- **One task per session** — don't let scope creep
+- When you discover a bug while implementing a feature:
+  1. Note it: "Discovered: [description]"
+  2. Continue with current task
+  3. File it at session end or suggest `/task add`
+- When context reaches 60%+, suggest wrapping up via `/land`
