@@ -1,5 +1,6 @@
 mod agent_integration_test;
 mod auto_fix_workflow_test;
+mod multi_agent_coordination_test;
 mod permission_error_test;
 mod permission_prompt_workflow_test;
 mod resource_error_test;
