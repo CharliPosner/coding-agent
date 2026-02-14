@@ -4,4 +4,4 @@
 
 mod settings;
 
-pub use settings::{Config, PersistenceConfig};
+pub use settings::{BehaviorConfig, Config, PersistenceConfig};

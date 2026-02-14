@@ -80,6 +80,8 @@ pub struct BehaviorConfig {
     pub fun_facts: bool,
     /// Delay in seconds before showing fun facts
     pub fun_fact_delay: u32,
+    /// Maximum number of tool iterations before stopping
+    pub max_tool_iterations: usize,
 }
 
 /// Error recovery settings
@@ -181,6 +183,7 @@ impl Default for BehaviorConfig {
             show_context_bar: true,
             fun_facts: true,
             fun_fact_delay: 10,
+            max_tool_iterations: 50,
         }
     }
 }
@@ -607,5 +610,22 @@ mod tests {
         // Verify persisted
         let loaded = Config::load_from(&config_path).expect("Should load config");
         assert_eq!(loaded.permissions.trusted_paths.len(), 2);
+    }
+
+    #[test]
+    fn test_tool_iterations_default() {
+        let config = Config::default();
+        assert_eq!(config.behavior.max_tool_iterations, 50);
+    }
+
+    #[test]
+    fn test_tool_iterations_configurable() {
+        let toml = r#"
+            [behavior]
+            max_tool_iterations = 100
+        "#;
+
+        let config = Config::parse(toml).expect("Should parse config");
+        assert_eq!(config.behavior.max_tool_iterations, 100);
     }
 }

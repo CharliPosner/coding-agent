@@ -387,24 +387,49 @@ impl Repl {
 
     /// Process a conversation turn, handling tool use in a loop until done
     fn process_conversation(&mut self) -> Result<(), String> {
-        const MAX_TOOL_ITERATIONS: usize = 10;
+        // Get max iterations from config, default to 50
+        let max_tool_iterations = self
+            .app_config
+            .as_ref()
+            .map(|cfg| cfg.behavior.max_tool_iterations)
+            .unwrap_or(50);
+
         let mut iteration = 0;
 
         loop {
             iteration += 1;
-            if iteration > MAX_TOOL_ITERATIONS {
+
+            // Check if we've exceeded the limit
+            if iteration > max_tool_iterations {
                 return Err(
-                    "Maximum tool iterations reached. Stopping to prevent infinite loop."
-                        .to_string(),
+                    format!(
+                        "Maximum tool iterations ({}) reached. Stopping to prevent infinite loop.",
+                        max_tool_iterations
+                    )
                 );
+            }
+
+            // Warn at 80% of limit
+            if iteration == ((max_tool_iterations * 80) / 100).max(1) {
+                self.print_newline();
+                self.print_line(&format!(
+                    "\x1b[33m⚠ Warning: Approaching iteration limit ({}/{})\x1b[0m",
+                    iteration, max_tool_iterations
+                ));
+                self.print_newline();
             }
 
             // Show thinking indicator with potential fun fact during long waits
             self.print_newline();
 
-            // Get a thinking message
+            // Get a thinking message with iteration counter
             let thinking_msg = self.thinking_messages.current();
-            self.print_line(thinking_msg);
+            let thinking_with_counter = if iteration > 1 {
+                format!("{} (tool call {}/{})", thinking_msg, iteration - 1, max_tool_iterations)
+            } else {
+                thinking_msg.to_string()
+            };
+            self.print_line(&thinking_with_counter);
 
             // Pre-fetch a fun fact if enabled (using sync method to avoid async in this context)
             let fun_fact = if self.fun_facts_enabled && self.fun_fact_client.is_some() {
