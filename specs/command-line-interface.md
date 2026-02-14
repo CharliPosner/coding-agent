@@ -2274,7 +2274,7 @@ if groups.len() > 1 {
    - [x] Test agent spawning and status
    - [x] Test tool execution with retries
    - [x] Test auto-fix workflow end-to-end
-   - [ ] Test permission prompts and config updates
+   - [x] Test permission prompts and config updates
    - [ ] Test multi-agent coordination
 
 3. **Manual Workflow Tests**
