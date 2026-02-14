@@ -154,9 +154,9 @@ Each deliverable contains multiple checklist items that should be completed toge
 **Current**: Headers use Cyan -> Blue -> DarkCyan for h1 -> h2 -> h3
 
 ### Checklist
-- [ ] Change h1 color from dark blue to bright cyan or bright white
-- [ ] Ensure h1 > h2 > h3 visual hierarchy maintained
-- [ ] Test against common terminal backgrounds (black, dark grey)
+- [x] Change h1 color from dark blue to bright cyan or bright white
+- [x] Ensure h1 > h2 > h3 visual hierarchy maintained
+- [x] Test against common terminal backgrounds (black, dark grey)
 
 ### Tests
 
