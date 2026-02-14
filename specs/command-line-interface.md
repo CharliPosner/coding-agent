@@ -2272,7 +2272,7 @@ if groups.len() > 1 {
 
 2. **Integration Test Suite**
    - [x] Test agent spawning and status
-   - [ ] Test tool execution with retries
+   - [x] Test tool execution with retries
    - [ ] Test auto-fix workflow end-to-end
    - [ ] Test permission prompts and config updates
    - [ ] Test multi-agent coordination
