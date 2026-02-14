@@ -3,6 +3,11 @@
 //! When auto-fixes are applied, this module generates regression tests to ensure
 //! the fix is not accidentally reverted. The generated tests are valid, compilable
 //! code that verifies the fix remains in place.
+//!
+//! Note: This module is fully implemented but not yet integrated into the main execution flow.
+//! It will be activated when Phase 14.3 (Self-Healing Error Recovery) integration is completed.
+
+#![allow(dead_code)]
 
 use crate::tools::{Diagnostic, FixApplicationResult, FixInfo, FixType};
 use std::path::{Path, PathBuf};

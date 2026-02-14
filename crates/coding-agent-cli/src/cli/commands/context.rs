@@ -65,6 +65,7 @@ fn render_context_info(cost_tracker: &CostTracker) -> String {
 
 /// Represents a file that has been loaded into the context.
 /// This will be used when file loading is implemented.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct LoadedFile {
     /// Path to the file (relative to working directory if possible)

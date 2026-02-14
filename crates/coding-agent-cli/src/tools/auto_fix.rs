@@ -2,6 +2,11 @@
 //!
 //! This module provides the actual fix application logic for various error types.
 //! It works with the diagnostics module to parse errors and apply appropriate fixes.
+//!
+//! Note: This module is fully implemented but not yet integrated into the main execution flow.
+//! It will be activated when Phase 14.3 (Self-Healing Error Recovery) integration is completed.
+
+#![allow(dead_code)]
 
 use crate::tools::{FixInfo, FixType};
 use std::collections::HashMap;

@@ -48,8 +48,11 @@ pub struct AgentManager {
 }
 
 /// Internal representation of a managed agent.
+#[allow(dead_code)]
 struct ManagedAgent {
+    #[allow(dead_code)]
     name: String,
+    #[allow(dead_code)]
     description: String,
     status: AgentStatus,
     handle: JoinHandle<Result<String, String>>,

@@ -2349,7 +2349,7 @@ async fn test_permission_prompt_workflow() {
 
 3. **Remove Temporary Allows**
    - [x] Remove any `#[allow(dead_code)]` annotations added temporarily
-   - [ ] Verify all code is actually used
+   - [x] Verify all code is actually used
    - [ ] Clean up any debug prints or temporary code
 
 **Stopping condition:**

@@ -3,6 +3,11 @@
 //! This module provides functionality to parse compiler error output (Rust, TypeScript, etc.)
 //! into structured diagnostic information that can be used by the fix-agent for automatic
 //! error recovery.
+//!
+//! Note: This module is fully implemented but not yet integrated into the main execution flow.
+//! It will be activated when Phase 14.3 (Self-Healing Error Recovery) integration is completed.
+
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 
