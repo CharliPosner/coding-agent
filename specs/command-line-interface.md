@@ -2342,10 +2342,10 @@ async fn test_permission_prompt_workflow() {
    - [x] Update README with new features
 
 2. **Architecture Documentation**
-   - [ ] Update `docs/CLI_ARCHITECTURE.md` with final structure
-   - [ ] Document agent lifecycle and coordination
-   - [ ] Document error recovery flow
-   - [ ] Document tool execution pipeline
+   - [x] Update `docs/CLI_ARCHITECTURE.md` with final structure
+   - [x] Document agent lifecycle and coordination
+   - [x] Document error recovery flow
+   - [x] Document tool execution pipeline
 
 3. **Remove Temporary Allows**
    - [ ] Remove any `#[allow(dead_code)]` annotations added temporarily

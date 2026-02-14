@@ -749,18 +749,383 @@ Colors centralized in `ui/theme.rs`:
 - Mock Claude API (with `wiremock`)
 - Terminal output snapshots (with `insta`)
 
+## Advanced System Architectures
+
+### Agent Lifecycle and Coordination
+
+The `AgentManager` orchestrates multiple background agents that can run in parallel to handle complex tasks.
+
+**Agent States:**
+
+```text
+Queued → Running → Complete
+                 ↓
+              Failed
+```
+
+**Agent Lifecycle:**
+
+1. **Creation** - Agent spawned via `AgentManager::spawn_agent()`
+   - Receives unique ID and configuration
+   - Added to active agents map
+   - Initial state: `Queued`
+
+2. **Execution** - Moved to `Running` state
+   - Assigned to tokio task
+   - Progress updates sent to manager
+   - Can be cancelled by user
+
+3. **Completion** - Final state transition
+   - Success → `Complete` with result
+   - Error → `Failed` with error details
+   - Removed from active agents after display
+
+**Coordination:**
+
+- **Parallel Execution** - Multiple agents run concurrently via tokio
+- **Status Tracking** - `AgentManager::get_all_statuses()` provides snapshot
+- **Progress Updates** - Agents report progress percentage (0-100)
+- **Cancellation** - `AgentManager::cancel_agent(id)` stops running agent
+- **Result Aggregation** - Results collected from completed agents
+
+**Integration Points:**
+
+- `/status` command queries manager for display
+- StatusBar polls manager for UI updates
+- FixAgent uses manager for spawning sub-agents
+- REPL waits for agent completion before proceeding
+
+### Error Recovery Flow
+
+The system implements multi-layered error recovery to handle failures gracefully.
+
+**Error Categorization:**
+
+```rust
+pub enum ErrorCategory {
+    Code,        // Missing deps, syntax errors, type errors
+    Network,     // API timeouts, connection failures
+    Permission,  // Access denied, insufficient permissions
+    Resource,    // Disk full, memory exhausted, file not found
+}
+```
+
+**Recovery Pipeline:**
+
+```text
+Tool Execution → Error Detected → Categorize
+                                      │
+        ┌─────────────────────────────┼─────────────────────────────┐
+        │                             │                             │
+    Code Error                  Network Error               Permission Error
+        │                             │                             │
+        ▼                             ▼                             ▼
+  FixAgent::spawn()          Retry with backoff          PermissionPrompt
+        │                             │                             │
+   Diagnose error            Attempt 1 (1s delay)           User decision
+        │                             │                             │
+   Generate fix              Attempt 2 (2s delay)         [y] Allow once
+        │                             │                  [n] Deny
+   Apply fix                 Attempt 3 (3s delay)         [a] Always (→ config)
+        │                             │                  [v] Never (→ cache)
+   Generate test             Give up if all fail              │
+        │                             │                             │
+   Verify fix                        │                             │
+        │                             │                             │
+        └─────────────────────────────┴─────────────────────────────┘
+                                      │
+                                      ▼
+                          Retry Original Operation
+                                      │
+                              ┌───────┴────────┐
+                              │                │
+                          Success          Failed
+                              │                │
+                         Report OK      Report Error
+```
+
+**FixAgent Workflow:**
+
+1. **Detection** - `ToolError::is_auto_fixable()` returns true
+2. **Analysis** - Parse error message with `DiagnosticsParser`
+   - Extract error type (missing dep, import, etc.)
+   - Identify file and location
+   - Determine fix strategy
+
+3. **Fix Generation** - Create fix based on error type
+   - Missing dependency: Add to `Cargo.toml` or `package.json`
+   - Missing import: Insert import statement
+   - Type mismatch: Suggest type annotation
+   - Syntax error: Apply correction
+
+4. **Application** - Apply fix to codebase
+   - Write file changes
+   - Verify syntax correctness
+   - Preserve formatting
+
+5. **Test Generation** - Create regression test
+   - Test that fix resolves issue
+   - Prevent future recurrence
+   - Written to `tests/auto_fix/`
+
+6. **Verification** - Ensure fix works
+   - Re-run compiler/tests
+   - Verify no new errors introduced
+   - Confirm original operation now succeeds
+
+7. **Retry** - Re-execute original tool
+   - Use same parameters
+   - Report success or new error
+
+**Retry Logic:**
+
+- **Exponential Backoff**: 1s, 2s, 3s delays between attempts
+- **Max Attempts**: 3 retries before giving up
+- **Transient Only**: Only network/resource errors retry automatically
+- **User Feedback**: Show attempt number and delay to user
+
+**Loop Prevention:**
+
+- Track fix attempts per error
+- Max 2 fix attempts per unique error
+- Detect if fix introduces same error
+- Abort if no progress after fix
+
+### Tool Execution Pipeline
+
+The tool execution system provides a robust framework for running Claude's tool calls with error handling, retries, and progress feedback.
+
+**Pipeline Stages:**
+
+```text
+1. Tool Request (from Claude)
+         │
+         ▼
+2. Parse & Validate
+   - Extract tool name
+   - Parse input JSON
+   - Validate schema
+         │
+         ▼
+3. Permission Check
+   - Read operations → Allow
+   - Write operations → Check trusted paths
+   - Untrusted → Prompt user
+         │
+         ▼
+4. Spinner Start
+   - Show tool name + target
+   - Begin elapsed time tracking
+         │
+         ▼
+5. Execute Tool Function
+   - Call tool implementation
+   - Handle tool-specific errors
+   - Capture output
+         │
+         ▼
+6. Error Handling
+   - Success → Format result
+   - Error → Categorize & recover
+         │
+         ▼
+7. Spinner Finish
+   - Show success/failure
+   - Display elapsed time
+   - Log result
+         │
+         ▼
+8. Return Result
+   - Send back to Claude
+   - Update conversation history
+```
+
+**Tool Registration:**
+
+```rust
+// In ToolExecutor initialization
+executor.register_tool("read_file", read_file_tool);
+executor.register_tool("write_file", write_file_tool);
+executor.register_tool("edit_file", edit_file_tool);
+executor.register_tool("list_files", list_files_tool);
+executor.register_tool("bash", bash_tool);
+executor.register_tool("code_search", code_search_tool);
+```
+
+**Execution with Context:**
+
+```rust
+pub struct ToolExecutionResult {
+    pub tool_id: String,
+    pub tool_name: String,
+    pub result: Result<String, ToolError>,
+    pub duration: Duration,
+    pub retry_count: u32,
+}
+
+impl ToolExecutor {
+    pub fn execute(
+        &self,
+        id: String,
+        name: &str,
+        input: Value,
+    ) -> ToolExecutionResult {
+        let start = Instant::now();
+        let mut retry_count = 0;
+
+        loop {
+            match self.run_tool(name, &input) {
+                Ok(output) => {
+                    return ToolExecutionResult {
+                        tool_id: id,
+                        tool_name: name.to_string(),
+                        result: Ok(output),
+                        duration: start.elapsed(),
+                        retry_count,
+                    };
+                }
+                Err(error) if error.is_retryable() && retry_count < MAX_RETRIES => {
+                    retry_count += 1;
+                    thread::sleep(exponential_backoff(retry_count));
+                    continue;
+                }
+                Err(error) => {
+                    return ToolExecutionResult {
+                        tool_id: id,
+                        tool_name: name.to_string(),
+                        result: Err(error),
+                        duration: start.elapsed(),
+                        retry_count,
+                    };
+                }
+            }
+        }
+    }
+}
+```
+
+**Integration with REPL:**
+
+The REPL integrates the tool pipeline in `process_conversation()`:
+
+1. Receive tool call from Claude response
+2. Create `ToolExecutionSpinner` for visual feedback
+3. Call `ToolExecutor::execute()` with tool details
+4. Handle result (success or error)
+5. For errors, trigger error recovery if applicable
+6. Send result back to Claude for next turn
+7. Update context bar with token usage
+
+**Performance Considerations:**
+
+- **Lazy Loading** - Tools loaded on first use
+- **Result Caching** - Identical reads cached per session
+- **Parallel Execution** - Independent tools can run concurrently
+- **Timeout Protection** - Long-running tools have configurable timeouts
+
+## Phase 14: Integrated Advanced Features
+
+**Completed Integration (Phase 14.1-14.6):**
+
+All advanced features have been fully integrated into the main execution flow:
+
+### Core Infrastructure (14.1)
+
+- **AgentManager** - Fully integrated into REPL as `Arc<AgentManager>`
+  - Spawns and tracks background agents
+  - Accessible from all commands via `CommandContext`
+  - Powers `/status` command for live agent monitoring
+
+- **Permission System** - Activated with interactive prompts
+  - `PermissionPrompt` wired into `PermissionChecker`
+  - "Always" responses update config file automatically
+  - "Never" responses cached per session
+  - Seamless integration with all write operations
+
+### Tool Execution Enhancement (14.2)
+
+- **ToolExecutor** - Centralized tool execution with retry logic
+  - Replaces ad-hoc tool execution
+  - Automatic retry for transient errors (network, etc.)
+  - Exponential backoff: 1s, 2s, 3s (max 3 attempts)
+
+- **ToolExecutionSpinner** - Enhanced visual feedback
+  - Shows tool name and target (e.g., "Reading src/main.rs...")
+  - Displays success/failure with elapsed time
+  - Replaces simple "● Running..." messages
+
+### Self-Healing Error Recovery (14.3)
+
+- **FixAgent** - Automatic error diagnosis and repair
+  - Spawned for auto-fixable code errors
+  - Analyzes compiler/runtime errors
+  - Applies fixes (missing deps, imports, etc.)
+  - Generates regression tests
+  - Retries original operation after fix
+
+- **Error Categorization** - Intelligent error routing
+  - Code errors → FixAgent
+  - Network errors → Retry with backoff
+  - Permission errors → Interactive prompt
+  - Resource errors → Alternative suggestions
+
+### UI Enhancements (14.4)
+
+- **StatusBar** - Multi-agent progress visualization
+  - Displays above input when agents active
+  - Real-time progress bars for each agent
+  - States: Queued, Running, Complete, Failed
+
+- **LongWaitDetector** - Entertainment during delays
+  - Monitors operation duration
+  - Triggers fun facts after 10s threshold
+  - Configurable via `fun_fact_delay` setting
+
+- **ToolResultFormatter** - Enhanced result display
+  - Syntax highlighting for code in results
+  - Collapsible sections for long outputs
+  - Line numbers for file reads
+
+### Advanced Git Features (14.5)
+
+- **FileGrouper** - Intelligent commit grouping
+  - Groups related files (same dir, test+impl)
+  - Suggests logical commit splits
+  - Shows grouping rationale to user
+
+- **Smart Commit Messages** - Purpose-focused generation
+  - Analyzes all files in group
+  - Focuses on "why" not "what"
+  - 3-sentence format with context
+  - Preview with edit option
+  - Multi-commit workflow support
+
+### Obsidian Integration (14.6)
+
+- **ObsidianVault** - Full vault operations
+  - Search by content with relevance scoring
+  - Create notes in suggested locations
+  - Update with diff preview
+  - Template system with metadata
+
+- **Note Templates** - Structured note generation
+  - Different types: meeting, concept, reference
+  - Includes date, tags, backlinks
+  - Context-aware suggestions
+
 ## Future Enhancements
 
-**Phase 14+ Features:**
+**Potential Future Features:**
 
-- Multi-agent coordination (status bar, parallel execution)
-- Self-healing (FixAgent, auto-fix, test generation)
-- Advanced git features (file grouping, smart commit messages)
-- Obsidian full integration (search, create, update)
-- Fun facts API (entertainment during long waits)
-- Planning mode (`/spec` for collaborative planning)
 - Voice input (Whisper integration)
 - Plugin system (custom commands via Lua/Rust)
+- Split pane view (code preview alongside conversation)
+- Vim keybindings
+- Custom themes (user-definable color schemes)
+- Session branching (fork conversations)
+- Web UI mode (optional browser interface)
+- Fuzzy file picker (fzf-style)
+- Snippets (save/reuse prompts)
 
 ## Common Patterns for New Features
 
